@@ -935,6 +935,124 @@ class App:
         self.next_button.configure(state="normal" if has_next else "disabled")
 
 
+class ReportsApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("TMIS - Reports")
+        self.root.geometry("1100x650")
+        self.report_names = list(REPORTS)
+        self.report = tk.StringVar(value=self.report_names[0])
+        self.search = tk.StringVar()
+        self.columns = []
+        self.rows = []
+
+        head = tk.Frame(root, bg=PURPLE)
+        head.pack(fill="x")
+        tk.Label(
+            head, text="TMIS - Reports", bg=PURPLE, fg="white",
+            font=("Segoe UI", 15, "bold"), pady=12
+        ).pack(side="left", padx=16)
+
+        controls = tk.Frame(root, padx=16, pady=12)
+        controls.pack(fill="x")
+        tk.Label(controls, text="Report:").pack(side="left")
+        picker = ttk.Combobox(
+            controls, textvariable=self.report, values=self.report_names,
+            state="readonly", width=38
+        )
+        picker.pack(side="left", padx=(8, 12))
+        picker.bind("<<ComboboxSelected>>", lambda event: self.refresh())
+        tk.Label(controls, text="Search:").pack(side="left")
+        search_entry = ttk.Entry(controls, textvariable=self.search, width=28)
+        search_entry.pack(side="left", padx=(8, 6))
+        search_entry.bind("<Return>", lambda event: self.refresh())
+        tk.Button(controls, text="Search", command=self.refresh).pack(side="left")
+        tk.Button(controls, text="Refresh", command=self.refresh).pack(
+            side="left", padx=6)
+        tk.Button(controls, text="Export CSV", command=self.export_csv).pack(
+            side="right")
+
+        self.status = tk.StringVar(value="")
+        tk.Label(root, textvariable=self.status, fg="#555").pack(
+            anchor="w", padx=16, pady=(0, 4))
+
+        box = tk.Frame(root)
+        box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        self.tree = ttk.Treeview(box, show="headings")
+        ys = ttk.Scrollbar(box, orient="vertical", command=self.tree.yview)
+        xs = ttk.Scrollbar(box, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        ys.pack(side="right", fill="y")
+        xs.pack(side="bottom", fill="x")
+        self.tree.pack(fill="both", expand=True)
+
+        self.refresh()
+
+    def refresh(self):
+        view = REPORTS[self.report.get()]
+        try:
+            self.rows, self.columns = query(f"SELECT * FROM `{view}`")
+        except mysql.connector.Error as error:
+            messagebox.showerror(
+                "Could not load report",
+                f"The report view could not be loaded.\n\n{error}\n\n"
+                "Import database/reports.sql if the report views do not exist.",
+                parent=self.root,
+            )
+            return
+
+        term = self.search.get().strip().lower()
+        if term:
+            self.rows = [
+                row for row in self.rows
+                if term in " ".join("" if value is None else str(value)
+                                    for value in row).lower()
+            ]
+
+        self.tree.delete(*self.tree.get_children())
+        self.tree["columns"] = self.columns
+        for column in self.columns:
+            self.tree.heading(column, text=column)
+            self.tree.column(column, width=130, anchor="w")
+        for row in self.rows:
+            self.tree.insert(
+                "", "end",
+                values=["" if value is None else value for value in row],
+            )
+        self.status.set(
+            f"{self.report.get()} - {len(self.rows)} record(s) shown")
+
+    def export_csv(self):
+        if not self.columns:
+            messagebox.showwarning(
+                "Nothing to export", "Load a report before exporting it.",
+                parent=self.root,
+            )
+            return
+        path = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="Export report as CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile=self.report.get().lower().replace(" ", "_") + ".csv",
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", newline="", encoding="utf-8-sig") as output:
+                writer = csv.writer(output)
+                writer.writerow(self.columns)
+                writer.writerows(self.rows)
+        except OSError as error:
+            messagebox.showerror(
+                "Export failed", f"Could not save the report:\n{error}",
+                parent=self.root,
+            )
+            return
+        messagebox.showinfo("Export complete", f"Report saved to:\n{path}",
+                            parent=self.root)
+
+
 def open_form(root, table):
     win = tk.Toplevel(root)
     try:
@@ -953,6 +1071,11 @@ def open_menu(root):
              bg=PURPLE, fg="white", font=("Segoe UI", 14, "bold"),
              pady=12).pack(side="left", padx=16)
     tk.Label(root, text="Choose a form to open", font=("Segoe UI", 12)).pack(pady=(16, 8))
+    tk.Button(
+        root, text="Open reports", width=48, pady=10, bg=PURPLE, fg="white",
+        font=("Segoe UI", 10, "bold"),
+        command=lambda: open_reports(root),
+    ).pack(pady=(0, 10))
     grid = tk.Frame(root)
     grid.pack(padx=24, pady=8)
     tables = [r[0] for r in query("SHOW TABLES")[0]]
@@ -961,6 +1084,20 @@ def open_menu(root):
                   font=("Segoe UI", 10, "bold"),
                   command=lambda t=t: open_form(root, t)).grid(
                       row=i // 2, column=i % 2, padx=8, pady=8)
+
+
+def open_reports(root):
+    from pathlib import Path
+    import importlib.util
+
+    report_path = Path(__file__).resolve().parent.parent / "reports" / "tmis_reports.py"
+    spec = importlib.util.spec_from_file_location("tmis_reports", report_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load reports module: {report_path}")
+    reports_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports_module)
+    open_report_window = reports_module.open_reports
+    open_report_window(root)
 
 
 if __name__ == "__main__":
