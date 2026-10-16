@@ -79,8 +79,70 @@ def allowed_values(table, column):
 class App:
     def __init__(self, root, table=None):
         self.root = root
-        root.title("TMIS - " + (friendly(table) + " form" if table else "Data entry forms"))
-        root.geometry("1000x780")
+
+        root.title(
+            "TMIS - " + (friendly(table) + " form" if table else "Data entry forms")
+        )
+        root.geometry("1150x800")
+        root.minsize(950, 650)
+        root.configure(bg="#F5F3FA")
+
+        # Consistent styling for ttk widgets
+        style = ttk.Style(root)
+        style.theme_use("clam")
+
+        style.configure(
+            "TFrame",
+            background="#F5F3FA"
+        )
+
+        style.configure(
+            "TLabel",
+            background="#F5F3FA",
+            foreground="#29243B",
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "TButton",
+            font=("Segoe UI", 10),
+            padding=(12, 7)
+        )
+
+        style.configure(
+            "TEntry",
+            padding=6,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "TCombobox",
+            padding=6,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "Treeview",
+            background="#FFFFFF",
+            foreground="#29243B",
+            fieldbackground="#FFFFFF",
+            rowheight=30,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "Treeview.Heading",
+            background="#5B3FA6",
+            foreground="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            padding=8
+        )
+
+        style.map(
+            "Treeview",
+            background=[("selected", "#E0D7F5")],
+            foreground=[("selected", "#29243B")]
+        )
 
         self.fields = {}
         self.required = set()
