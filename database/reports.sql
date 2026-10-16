@@ -1,17 +1,7 @@
--- =======================================================================
--- TRAINING MANAGEMENT INFORMATION SYSTEM (TMIS)
--- Coursework Module: System Reports & Analytical Views
--- Database: tmis_db
--- =======================================================================
 
 USE tmis_db;
 
--- -----------------------------------------------------------------------
--- REPORT 1: Course Performance & Revenue Summary (Management Report)
--- Purpose: Evaluates course demand, capacity utilization rate, total revenue
---          collected vs. outstanding payments.
--- Stakeholder: Training Directors / Executive Management
--- -----------------------------------------------------------------------
+-- Report 1: Course performance and revenue
 CREATE OR REPLACE VIEW rpt_course_performance_summary AS
 SELECT 
     c.CourseID,
@@ -35,12 +25,7 @@ GROUP BY
     c.CourseFee, c.MaximumCapacity, c.CourseStatus;
 
 
--- -----------------------------------------------------------------------
--- REPORT 2: Trainee Attendance & Certificate Eligibility (Academic/Training Report)
--- Purpose: Assesses trainee attendance compliance (>=75%) and fee clearance
---          to determine qualification for certificate issuance.
--- Stakeholder: Academic Registrar / Lead Trainers
--- -----------------------------------------------------------------------
+-- Report 2: Attendance and certificate eligibility
 CREATE OR REPLACE VIEW rpt_trainee_attendance_eligibility AS
 SELECT 
     t.TraineeID,
@@ -78,12 +63,7 @@ GROUP BY
     e.EnrollmentID, e.EnrollmentStatus, e.PaymentStatus;
 
 
--- -----------------------------------------------------------------------
--- REPORT 3: Outstanding Debtor / Payment Default Report (Finance Report)
--- Purpose: Lists trainees with unpaid course fees, their balances, and
---          contact details for accounts receivables follow-up.
--- Stakeholder: Finance & Accounts Department
--- -----------------------------------------------------------------------
+-- Report 3: Outstanding debtors
 CREATE OR REPLACE VIEW rpt_outstanding_debtors AS
 SELECT 
     t.TraineeID,
@@ -108,12 +88,7 @@ GROUP BY
 HAVING BalanceDue > 0;
 
 
--- -----------------------------------------------------------------------
--- REPORT 4: Trainer Workload & Activity Analysis (HR / Operations Report)
--- Purpose: Analyzes trainer allocation across courses, sessions conducted,
---          and upcoming training commitments.
--- Stakeholder: Human Resources / Training Operations Coordinator
--- -----------------------------------------------------------------------
+-- Report 4: Trainer workload
 CREATE OR REPLACE VIEW rpt_trainer_workload AS
 SELECT 
     st.StaffID,
@@ -130,12 +105,7 @@ WHERE st.Role = 'trainer'
 GROUP BY st.StaffID, st.FullName, st.Department, st.Email;
 
 
--- -----------------------------------------------------------------------
--- REPORT 5: Session Attendance Register (Daily Operational Sheet)
--- Purpose: Provides a roll call roster for a specific scheduled training session,
---          including contact details and real-time check-in logs.
--- Stakeholder: Assigned Trainer / Classroom Supervisor
--- -----------------------------------------------------------------------
+-- Report 5: Session attendance register
 CREATE OR REPLACE VIEW rpt_session_attendance_register AS
 SELECT 
     s.SessionID,
@@ -157,12 +127,7 @@ JOIN Trainee t ON t.TraineeID = e.TraineeID
 LEFT JOIN Attendance a ON a.SessionID = s.SessionID AND a.TraineeID = t.TraineeID;
 
 
--- -----------------------------------------------------------------------
--- REPORT 6: Verified Certificate Dispatch (Official Records Document)
--- Purpose: Renders verified credential details for printing certificates
---          with trace serial numbers and issuing officer signatures.
--- Stakeholder: Trainees, Verification Bodies, Quality Assurance
--- -----------------------------------------------------------------------
+-- Report 6: Certificate dispatch
 CREATE OR REPLACE VIEW rpt_certificate_dispatch AS
 SELECT 
     cert.CertificateID,
@@ -184,14 +149,10 @@ JOIN Course c ON e.CourseID = c.CourseID
 JOIN Staff st ON cert.IssuedBy = st.StaffID;
 
 
--- =======================================================================
--- VERIFICATION QUERIES
--- Run these statements to preview each report's dataset
--- =======================================================================
+-- Preview reports
 SELECT * FROM rpt_course_performance_summary;
 SELECT * FROM rpt_trainee_attendance_eligibility;
 SELECT * FROM rpt_outstanding_debtors;
 SELECT * FROM rpt_trainer_workload;
 SELECT * FROM rpt_session_attendance_register WHERE SessionDate = CURRENT_DATE - INTERVAL 3 DAY;
 SELECT * FROM rpt_certificate_dispatch;
-
