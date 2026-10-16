@@ -1,3 +1,4 @@
 .env
 forms/db_config.py
+TMISvenv/
 __pycache__/
