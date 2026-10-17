@@ -1,6 +1,8 @@
 """TMIS forms: one data-entry form for every table in tmis_db.
 Pick a table, then add, edit or delete records. The fields are built
-automatically from the table's real columns."""
+automatically from the table's real columns. Add, update and delete are
+routed through the stored procedures in queries.sql (see tmis_actions.py)."""
+import csv
 import re
 import sys
 import calendar
@@ -9,9 +11,10 @@ import secrets
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import mysql.connector
 from db_config import get_connection
+import tmis_actions as actions
 
 PURPLE = "#5B3FA6"
 TINT = "#EFEAFB"
@@ -27,7 +30,7 @@ FRIENDLY = {
 
 
 def friendly(table):
-    return FRIENDLY.get(table, table.capitalize())
+    return FRIENDLY.get(table.lower(), table)
 
 
 def s(v):
@@ -76,6 +79,20 @@ def allowed_values(table, column):
     return None
 
 
+def list_objects():
+    """Return (base tables, views) in the current database."""
+    rows, _ = query("SHOW FULL TABLES")
+    tables = [r[0] for r in rows if str(r[1]).upper() == "BASE TABLE"]
+    views = [r[0] for r in rows if str(r[1]).upper() == "VIEW"]
+    return tables, views
+
+
+def pretty_view(name):
+    if name.lower().startswith("v_"):
+        return name[2:].replace("_", " ").capitalize()
+    return name
+
+
 class App:
     def __init__(self, root, table=None):
         self.root = root
@@ -95,6 +112,7 @@ class App:
         self.pk = []
         self.rows = {}
         self.editing = None
+        self.editing_row = {}
         self.page = 0
         self.page_size = 100
         self.mode = tk.StringVar(value="Adding a new record")
@@ -112,7 +130,7 @@ class App:
             top = tk.Frame(root)
             top.pack(fill="x", padx=16, pady=10)
             tk.Label(top, text="Form for table:", font=("Segoe UI", 11)).pack(side="left")
-            tables = [r[0] for r in query("SHOW TABLES")[0]]
+            tables = list_objects()[0]
             self.table = tk.StringVar(value="payment" if "payment" in tables else tables[0])
             picker = ttk.Combobox(top, textvariable=self.table, values=tables,
                                   state="readonly", width=24)
@@ -252,6 +270,7 @@ class App:
         self.cols = [c[0] for c in cols]
         self.pk = [c[0] for c in cols if c[6] == "PRI"]
         self.editing = None
+        self.editing_row = {}
         self.page = 0
         self.mode.set(
             "Adding a new record" if self.pk
@@ -259,9 +278,13 @@ class App:
         self.update_button.configure(state="disabled")
         self.delete_button.configure(state="disabled")
 
+        managed = actions.auto_fields(t)
+        optional = actions.optional_fields(t)
+
         for i, (name, dtype, ctype, nullable, default, extra, key) in enumerate(cols):
-            auto = "auto_increment" in (extra or "").lower()
-            req = nullable == "NO" and default is None and not auto
+            auto = "auto_increment" in (extra or "").lower() or name in managed
+            req = (nullable == "NO" and default is None
+                   and not auto and name not in optional)
             self.nullable[name] = nullable == "YES"
             self.data_types[name] = dtype.lower()
             if req:
@@ -273,6 +296,8 @@ class App:
                 hint = " (YYYY-MM-DD HH:MM:SS)"
             elif name.lower() == "passwordhash":
                 hint = " (new password; stored as a secure hash)"
+            elif name in optional:
+                hint = " (leave blank to auto-generate)"
             label = name + hint + (" *" if req else "")
             r, c = divmod(i, 2)
             tk.Label(self.form, text=label, bg=TINT, anchor="w",
@@ -317,7 +342,7 @@ class App:
                     rc)
                 self.fk_labels[name] = (rt, rc, display_col)
                 fk_field = tk.Frame(self.form, bg=TINT)
-                w = ttk.Entry(fk_field, textvariable=var, width=27, state="readonly")
+                w = ttk.Entry(fk_field, textvariable=var, width=27)
                 w.pack(side="left")
                 tk.Button(
                     fk_field, text="Find...", padx=6,
@@ -340,6 +365,16 @@ class App:
         self.attach_form_scroll(self.form)
         self.refresh_grid()
         self.update_form_scroll()
+
+    def _msg(self, kind, title, message, parent=None):
+        return getattr(messagebox, kind)(title, message, parent=parent or self.root)
+
+    def _modal(self, popup):
+        popup.update_idletasks()
+        popup.wait_visibility()
+        popup.lift()
+        popup.focus_force()
+        popup.grab_set()
 
     def update_form_scroll(self, event=None):
         self.form_canvas.configure(scrollregion=self.form_canvas.bbox("all"))
@@ -434,7 +469,7 @@ class App:
             popup.destroy()
 
         show_month()
-        popup.grab_set()
+        self._modal(popup)
 
     def open_time_picker(self, variable):
         try:
@@ -451,11 +486,11 @@ class App:
         hour = tk.StringVar(value=f"{current.hour:02d}")
         minute = tk.StringVar(value=f"{current.minute:02d}")
         second = tk.StringVar(value=f"{current.second:02d}")
-        for column, (label, variable, maximum) in enumerate((
+        for column, (label, spin_var, maximum) in enumerate((
                 ("Hour", hour, 23), ("Minute", minute, 59), ("Second", second, 59))):
             tk.Label(body, text=label).grid(row=0, column=column, padx=4)
             tk.Spinbox(body, from_=0, to=maximum, width=4, wrap=True,
-                       textvariable=variable, format="%02.0f").grid(
+                       textvariable=spin_var, format="%02.0f").grid(
                            row=1, column=column, padx=4, pady=(2, 10))
 
         def choose_time():
@@ -463,14 +498,14 @@ class App:
                 picked = datetime(
                     2000, 1, 1, int(hour.get()), int(minute.get()), int(second.get()))
             except ValueError:
-                messagebox.showwarning("Invalid time", "Choose a valid time.", parent=popup)
+                self._msg("showwarning", "Invalid time", "Choose a valid time.", parent=popup)
                 return
             variable.set(picked.strftime("%H:%M:%S"))
             popup.destroy()
 
         tk.Button(body, text="Use this time", command=choose_time).grid(
             row=2, column=0, columnspan=3, pady=(4, 0))
-        popup.grab_set()
+        self._modal(popup)
 
     def open_fk_picker(self, name, variable):
         table, key_col, label_col = self.fk_labels[name]
@@ -489,8 +524,8 @@ class App:
         entry = ttk.Entry(top, textvariable=search)
         entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
-        listing = tk.Frame(popup, padx=10, pady=(0, 10))
-        listing.pack(fill="both", expand=True)
+        listing = tk.Frame(popup, padx=10)
+        listing.pack(fill="both", expand=True, pady=(0, 10))
         tree = ttk.Treeview(
             listing, columns=("id", "label"), show="headings", selectmode="browse")
         tree.heading("id", text=key_col)
@@ -517,7 +552,7 @@ class App:
             try:
                 rows, _ = query(sql, params)
             except mysql.connector.Error as error:
-                messagebox.showerror("Database error", str(error), parent=popup)
+                self._msg("showerror", "Database error", str(error), parent=popup)
                 return
             tree.delete(*tree.get_children())
             matches.clear()
@@ -542,7 +577,7 @@ class App:
         tk.Button(popup, text="Select", command=choose).pack(pady=(0, 10))
         refresh_choices()
         entry.focus_set()
-        popup.grab_set()
+        self._modal(popup)
 
     def foreign_key_display(self, name, value):
         table, key_col, label_col = self.fk_labels[name]
@@ -563,6 +598,7 @@ class App:
         for var, auto in self.fields.values():
             var.set("(auto)" if auto else "")
         self.editing = None
+        self.editing_row = {}
         self.mode.set(
             "Adding a new record" if self.pk
             else "Adding a new record (no primary key; add only)")
@@ -575,6 +611,7 @@ class App:
         if not sel or sel[0] not in self.rows:
             return
         row = self.rows[sel[0]]
+        self.editing_row = dict(zip(self.cols, row))
         for name, v in zip(self.cols, row):
             if name.lower() == "passwordhash":
                 self.fields[name][0].set("")
@@ -582,7 +619,7 @@ class App:
                 try:
                     self.fields[name][0].set(self.foreign_key_display(name, v))
                 except mysql.connector.Error as error:
-                    messagebox.showerror("Database error", str(error))
+                    self._msg("showerror", "Database error", str(error))
                     self.fields[name][0].set(str(v))
             else:
                 self.fields[name][0].set("" if v is None else str(v))
@@ -618,10 +655,15 @@ class App:
                 v = hash_password(v)
             elif name in self.foreign_keys:
                 value_map = self.fk_choices.get(name, {})
-                if v not in value_map:
-                    invalid.append(f"Choose an existing value for {name} using Find.")
-                    continue
-                v = value_map[v]
+                if v in value_map:
+                    v = value_map[v]
+                else:
+                    id_match = re.match(r"(\d+)(?:\s*-.*)?$", v, re.S)
+                    if not id_match:
+                        invalid.append(
+                            f"Type a valid ID number for {name}, or choose one with Find.")
+                        continue
+                    v = id_match.group(1)
             error = self.validate_value(name, v)
             if error:
                 invalid.append(error)
@@ -701,7 +743,9 @@ class App:
             except mysql.connector.Error as error:
                 return f"Could not validate {name}: {error}"
             if not found:
-                return f"{name} must match an existing {table}.{column} value."
+                return (f"{name} {value} does not exist. There is no {table} with "
+                        f"{column} = {value}.\nPick an existing one with Find, or "
+                        f"create it first in the {friendly(table)} form.")
         return None
 
     def validate_record(self, cols, vals, for_update):
@@ -737,7 +781,9 @@ class App:
                 continue
             if duplicates:
                 errors.append(
-                    "A record with this value already exists: " + ", ".join(group))
+                    "This record already exists: " + " + ".join(group)
+                    + " must be unique.\nTo change it, select the row in the table "
+                    "below and press Update.")
         return errors
 
     def where_clause(self):
@@ -747,14 +793,19 @@ class App:
         cols, vals, missing, invalid = self.collect(False)
         invalid.extend(self.validate_record(cols, vals, False))
         if missing:
-            messagebox.showwarning("Missing fields",
+            self._msg("showwarning", "Missing fields",
                                    "Please fill in: " + ", ".join(missing))
             return
         if invalid:
-            messagebox.showwarning("Check field values", "\n".join(invalid))
+            self._msg("showwarning", "Check field values", "\n".join(invalid))
             return
         if not cols:
-            messagebox.showwarning("Nothing to save", "Enter some values first.")
+            self._msg("showwarning", "Nothing to save", "Enter some values first.")
+            return
+        handler = actions.ADD.get(self.table.get().lower())
+        if handler:
+            values = dict(zip(cols, vals))
+            self.run_action(lambda: handler(values), "Record saved.")
             return
         names = ", ".join(f"`{c}`" for c in cols)
         marks = ", ".join(["%s"] * len(vals))
@@ -763,20 +814,26 @@ class App:
 
     def update(self):
         if self.editing is None:
-            messagebox.showwarning("Select a record",
+            self._msg("showwarning", "Select a record",
                                    "Click a row in the table below first, then change it and press Update.")
             return
         cols, vals, missing, invalid = self.collect(True)
         invalid.extend(self.validate_record(cols, vals, True))
         if missing:
-            messagebox.showwarning("Missing fields",
+            self._msg("showwarning", "Missing fields",
                                    "Please fill in: " + ", ".join(missing))
             return
         if invalid:
-            messagebox.showwarning("Check field values", "\n".join(invalid))
+            self._msg("showwarning", "Check field values", "\n".join(invalid))
             return
         if not cols:
-            messagebox.showwarning("Nothing to update", "There is nothing to change.")
+            self._msg("showwarning", "Nothing to update", "There is nothing to change.")
+            return
+        handler = actions.UPDATE.get(self.table.get().lower())
+        if handler:
+            values = dict(zip(cols, vals))
+            old, key = dict(self.editing_row), tuple(self.editing)
+            self.run_action(lambda: handler(values, old, key), "Record updated.")
             return
         sets = ", ".join(f"`{c}` = %s" for c in cols)
         self.run(f"UPDATE `{self.table.get()}` SET {sets} WHERE {self.where_clause()}",
@@ -784,28 +841,51 @@ class App:
 
     def delete(self):
         if self.editing is None:
-            messagebox.showwarning("Select a record",
+            self._msg("showwarning", "Select a record",
                                    "Click the row you want to delete first.")
             return
-        if not messagebox.askyesno("Delete record",
+        table = self.table.get().lower()
+        rule = actions.ARCHIVE.get(table)
+        if rule:
+            if not self._msg("askyesno", "Please confirm", rule[2]):
+                return
+            record_id = self.editing[0]
+            self.run_action(lambda: actions.archive(table, record_id), rule[3])
+            return
+        if not self._msg("askyesno", "Delete record",
                                    "Delete the selected record? This can't be undone."):
             return
         self.run(f"DELETE FROM `{self.table.get()}` WHERE {self.where_clause()}",
                  list(self.editing), "Record deleted.")
+
+    def run_action(self, action, done_message):
+        try:
+            message = action()
+        except actions.ActionError as e:
+            self._msg("showwarning", "Not allowed", str(e))
+            return
+        except mysql.connector.Error as e:
+            self._msg("showerror", "Could not save",
+                                 e.msg if e.errno == 1644 else str(e))
+            return
+        self._msg("showinfo", "Done", message or done_message)
+        self.clear()
+        self.refresh_grid()
 
     def run(self, sql, params, done_message):
         try:
             execute(sql, params)
         except mysql.connector.Error as e:
             if e.errno == 1451:
-                messagebox.showerror(
+                self._msg("showerror", 
                     "Can't delete",
                     "Other records depend on this one (for example payments for an "
                     "enrollment). Delete or change those first.")
             else:
-                messagebox.showerror("Database error", str(e))
+                self._msg("showerror", "Database error",
+                                     e.msg if e.errno == 1644 else str(e))
             return
-        messagebox.showinfo("Done", done_message)
+        self._msg("showinfo", "Done", done_message)
         self.clear()
         self.refresh_grid()
 
@@ -873,32 +953,179 @@ class App:
         self.next_button.configure(state="normal" if has_next else "disabled")
 
 
+class ViewWindow:
+    """Read-only window for a database view: search, page, refresh, export."""
+
+    def __init__(self, win, view):
+        self.win = win
+        self.view = view
+        self.page = 0
+        self.page_size = 100
+        self.cols = []
+        win.title("TMIS - " + pretty_view(view))
+        win.geometry("1000x600")
+
+        head = tk.Frame(win, bg=PURPLE)
+        head.pack(fill="x")
+        tk.Label(head, text=pretty_view(view), bg=PURPLE, fg="white",
+                 font=("Segoe UI", 15, "bold"), pady=12).pack(side="left", padx=16)
+        tk.Label(head, text="Read-only report", bg=PURPLE,
+                 fg="#D9CEF5").pack(side="right", padx=16)
+
+        bar = tk.Frame(win)
+        bar.pack(fill="x", padx=16, pady=10)
+        tk.Label(bar, text="Find:", fg="#555").pack(side="left")
+        self.search = tk.StringVar()
+        entry = ttk.Entry(bar, textvariable=self.search, width=30)
+        entry.pack(side="left", padx=(6, 4))
+        entry.bind("<Return>", lambda event: self.run_search())
+        tk.Button(bar, text="Search", command=self.run_search).pack(side="left")
+        tk.Button(bar, text="Clear search",
+                  command=self.clear_search).pack(side="left", padx=6)
+        tk.Button(bar, text="Refresh", command=self.load).pack(side="left")
+        tk.Button(bar, text="Export CSV", bg=TEAL, fg="white",
+                  activeforeground="white", command=self.export).pack(side="left", padx=6)
+        self.next_button = tk.Button(bar, text="Next", command=self.next_page)
+        self.next_button.pack(side="right")
+        self.previous_button = tk.Button(
+            bar, text="Previous", command=self.previous_page, state="disabled")
+        self.previous_button.pack(side="right", padx=6)
+        self.page_label = tk.StringVar(value="")
+        tk.Label(bar, textvariable=self.page_label, fg="#555").pack(side="right", padx=10)
+
+        box = tk.Frame(win)
+        box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        self.tree = ttk.Treeview(box, show="headings", selectmode="browse")
+        ys = ttk.Scrollbar(box, orient="vertical", command=self.tree.yview)
+        xs = ttk.Scrollbar(box, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
+        ys.pack(side="right", fill="y")
+        xs.pack(side="bottom", fill="x")
+        self.tree.pack(fill="both", expand=True)
+        self.load()
+
+    def where(self):
+        term = self.search.get().strip()
+        if not term or not self.cols:
+            return "", []
+        pattern = term.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        clause = " WHERE " + " OR ".join(
+            f"CAST(`{c.replace('`', '``')}` AS CHAR) LIKE %s ESCAPE '!'"
+            for c in self.cols)
+        return clause, [f"%{pattern}%"] * len(self.cols)
+
+    def load(self):
+        view = self.view.replace("`", "``")
+        try:
+            if not self.cols:
+                self.cols = query(f"SELECT * FROM `{view}` LIMIT 1")[1]
+            clause, params = self.where()
+            sql = f"SELECT * FROM `{view}`{clause} ORDER BY 1 LIMIT %s OFFSET %s"
+            rows, names = query(
+                sql, params + [self.page_size + 1, self.page * self.page_size])
+        except mysql.connector.Error as error:
+            messagebox.showerror("Database error", str(error), parent=self.win)
+            return
+        has_next = len(rows) > self.page_size
+        rows = rows[:self.page_size]
+        self.tree.delete(*self.tree.get_children())
+        self.tree["columns"] = names
+        for n in names:
+            self.tree.heading(n, text=n)
+            self.tree.column(n, width=130, anchor="w")
+        for r in rows:
+            self.tree.insert("", "end",
+                             values=["" if v is None else v for v in r])
+        self.page_label.set(f"Page {self.page + 1} - {len(rows)} row(s) shown")
+        self.previous_button.configure(state="normal" if self.page > 0 else "disabled")
+        self.next_button.configure(state="normal" if has_next else "disabled")
+
+    def run_search(self):
+        self.page = 0
+        self.load()
+
+    def clear_search(self):
+        self.search.set("")
+        self.page = 0
+        self.load()
+
+    def previous_page(self):
+        if self.page > 0:
+            self.page -= 1
+            self.load()
+
+    def next_page(self):
+        self.page += 1
+        self.load()
+
+    def export(self):
+        path = filedialog.asksaveasfilename(
+            parent=self.win, defaultextension=".csv",
+            initialfile=f"{self.view}.csv", filetypes=[("CSV file", "*.csv")])
+        if not path:
+            return
+        view = self.view.replace("`", "``")
+        try:
+            clause, params = self.where()
+            rows, names = query(f"SELECT * FROM `{view}`{clause} ORDER BY 1", params)
+            with open(path, "w", newline="", encoding="utf-8-sig") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(names)
+                writer.writerows(rows)
+        except (mysql.connector.Error, OSError) as error:
+            messagebox.showerror("Could not export", str(error), parent=self.win)
+            return
+        messagebox.showinfo("Exported", f"Saved {len(rows)} row(s) to\n{path}",
+                            parent=self.win)
+
+
 def open_form(root, table):
     win = tk.Toplevel(root)
     try:
         App(win, table=table)
     except Exception as e:
         win.destroy()
-        messagebox.showerror("Could not open form", str(e))
+        messagebox.showerror("Could not open form", str(e), parent=root)
+
+
+def open_view(root, view):
+    win = tk.Toplevel(root)
+    try:
+        ViewWindow(win, view)
+    except Exception as e:
+        win.destroy()
+        messagebox.showerror("Could not open report", str(e), parent=root)
 
 
 def open_menu(root):
     root.title("TMIS - Forms menu")
-    root.geometry("560x520")
+    root.geometry("600x780")
     head = tk.Frame(root, bg=PURPLE)
     head.pack(fill="x")
     tk.Label(head, text="TMIS - Training Management Information System",
              bg=PURPLE, fg="white", font=("Segoe UI", 14, "bold"),
              pady=12).pack(side="left", padx=16)
-    tk.Label(root, text="Choose a form to open", font=("Segoe UI", 12)).pack(pady=(16, 8))
+    tables, views = list_objects()
+
+    tk.Label(root, text="Data entry forms", font=("Segoe UI", 12, "bold")).pack(pady=(14, 4))
     grid = tk.Frame(root)
-    grid.pack(padx=24, pady=8)
-    tables = [r[0] for r in query("SHOW TABLES")[0]]
+    grid.pack(padx=24, pady=4)
     for i, t in enumerate(tables):
-        tk.Button(grid, text=friendly(t), width=22, pady=10, bg=TINT, fg="#222",
+        tk.Button(grid, text=friendly(t), width=22, pady=8, bg=TINT, fg="#222",
                   font=("Segoe UI", 10, "bold"),
                   command=lambda t=t: open_form(root, t)).grid(
-                      row=i // 2, column=i % 2, padx=8, pady=8)
+                      row=i // 2, column=i % 2, padx=8, pady=5)
+
+    if views:
+        tk.Label(root, text="Reports and views (read-only)",
+                 font=("Segoe UI", 12, "bold")).pack(pady=(14, 4))
+        vgrid = tk.Frame(root)
+        vgrid.pack(padx=24, pady=4)
+        for i, v in enumerate(views):
+            tk.Button(vgrid, text=pretty_view(v), width=22, pady=8, bg="#DDF0F0",
+                      fg="#222", font=("Segoe UI", 10, "bold"),
+                      command=lambda v=v: open_view(root, v)).grid(
+                          row=i // 2, column=i % 2, padx=8, pady=5)
 
 
 if __name__ == "__main__":
