@@ -2,3 +2,5 @@
 forms/db_config.py
 TMISvenv/
 __pycache__/
+*.exe
+tempCodeRunnerFile.*
