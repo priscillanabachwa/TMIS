@@ -96,8 +96,70 @@ def pretty_view(name):
 class App:
     def __init__(self, root, table=None):
         self.root = root
-        root.title("TMIS - " + (friendly(table) + " form" if table else "Data entry forms"))
-        root.geometry("1000x780")
+
+        root.title(
+            "TMIS - " + (friendly(table) + " form" if table else "Data entry forms")
+        )
+        root.geometry("1150x800")
+        root.minsize(950, 650)
+        root.configure(bg="#F5F3FA")
+
+        # Consistent styling for ttk widgets
+        style = ttk.Style(root)
+        style.theme_use("clam")
+
+        style.configure(
+            "TFrame",
+            background="#F5F3FA"
+        )
+
+        style.configure(
+            "TLabel",
+            background="#F5F3FA",
+            foreground="#29243B",
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "TButton",
+            font=("Segoe UI", 10),
+            padding=(12, 7)
+        )
+
+        style.configure(
+            "TEntry",
+            padding=6,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "TCombobox",
+            padding=6,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "Treeview",
+            background="#FFFFFF",
+            foreground="#29243B",
+            fieldbackground="#FFFFFF",
+            rowheight=30,
+            font=("Segoe UI", 10)
+        )
+
+        style.configure(
+            "Treeview.Heading",
+            background="#5B3FA6",
+            foreground="#FFFFFF",
+            font=("Segoe UI", 10, "bold"),
+            padding=8
+        )
+
+        style.map(
+            "Treeview",
+            background=[("selected", "#E0D7F5")],
+            foreground=[("selected", "#29243B")]
+        )
 
         self.fields = {}
         self.required = set()
@@ -953,130 +1015,122 @@ class App:
         self.next_button.configure(state="normal" if has_next else "disabled")
 
 
-class ViewWindow:
-    """Read-only window for a database view: search, page, refresh, export."""
-
-    def __init__(self, win, view):
-        self.win = win
-        self.view = view
-        self.page = 0
-        self.page_size = 100
-        self.cols = []
-        win.title("TMIS - " + pretty_view(view))
-        win.geometry("1000x600")
-
-        head = tk.Frame(win, bg=PURPLE)
-        head.pack(fill="x")
-        tk.Label(head, text=pretty_view(view), bg=PURPLE, fg="white",
-                 font=("Segoe UI", 15, "bold"), pady=12).pack(side="left", padx=16)
-        tk.Label(head, text="Read-only report", bg=PURPLE,
-                 fg="#D9CEF5").pack(side="right", padx=16)
-
-        bar = tk.Frame(win)
-        bar.pack(fill="x", padx=16, pady=10)
-        tk.Label(bar, text="Find:", fg="#555").pack(side="left")
+class ReportsApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("TMIS - Reports")
+        self.root.geometry("1100x650")
+        self.report_names = list(REPORTS)
+        self.report = tk.StringVar(value=self.report_names[0])
         self.search = tk.StringVar()
-        entry = ttk.Entry(bar, textvariable=self.search, width=30)
-        entry.pack(side="left", padx=(6, 4))
-        entry.bind("<Return>", lambda event: self.run_search())
-        tk.Button(bar, text="Search", command=self.run_search).pack(side="left")
-        tk.Button(bar, text="Clear search",
-                  command=self.clear_search).pack(side="left", padx=6)
-        tk.Button(bar, text="Refresh", command=self.load).pack(side="left")
-        tk.Button(bar, text="Export CSV", bg=TEAL, fg="white",
-                  activeforeground="white", command=self.export).pack(side="left", padx=6)
-        self.next_button = tk.Button(bar, text="Next", command=self.next_page)
-        self.next_button.pack(side="right")
-        self.previous_button = tk.Button(
-            bar, text="Previous", command=self.previous_page, state="disabled")
-        self.previous_button.pack(side="right", padx=6)
-        self.page_label = tk.StringVar(value="")
-        tk.Label(bar, textvariable=self.page_label, fg="#555").pack(side="right", padx=10)
+        self.columns = []
+        self.rows = []
 
-        box = tk.Frame(win)
+        head = tk.Frame(root, bg=PURPLE)
+        head.pack(fill="x")
+        tk.Label(
+            head, text="TMIS - Reports", bg=PURPLE, fg="white",
+            font=("Segoe UI", 15, "bold"), pady=12
+        ).pack(side="left", padx=16)
+
+        controls = tk.Frame(root, padx=16, pady=12)
+        controls.pack(fill="x")
+        tk.Label(controls, text="Report:").pack(side="left")
+        picker = ttk.Combobox(
+            controls, textvariable=self.report, values=self.report_names,
+            state="readonly", width=38
+        )
+        picker.pack(side="left", padx=(8, 12))
+        picker.bind("<<ComboboxSelected>>", lambda event: self.refresh())
+        tk.Label(controls, text="Search:").pack(side="left")
+        search_entry = ttk.Entry(controls, textvariable=self.search, width=28)
+        search_entry.pack(side="left", padx=(8, 6))
+        search_entry.bind("<Return>", lambda event: self.refresh())
+        tk.Button(controls, text="Search", command=self.refresh).pack(side="left")
+        tk.Button(controls, text="Refresh", command=self.refresh).pack(
+            side="left", padx=6)
+        tk.Button(controls, text="Export CSV", command=self.export_csv).pack(
+            side="right")
+
+        self.status = tk.StringVar(value="")
+        tk.Label(root, textvariable=self.status, fg="#555").pack(
+            anchor="w", padx=16, pady=(0, 4))
+
+        box = tk.Frame(root)
         box.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-        self.tree = ttk.Treeview(box, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(box, show="headings")
         ys = ttk.Scrollbar(box, orient="vertical", command=self.tree.yview)
         xs = ttk.Scrollbar(box, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=ys.set, xscrollcommand=xs.set)
         ys.pack(side="right", fill="y")
         xs.pack(side="bottom", fill="x")
         self.tree.pack(fill="both", expand=True)
-        self.load()
 
-    def where(self):
-        term = self.search.get().strip()
-        if not term or not self.cols:
-            return "", []
-        pattern = term.replace("!", "!!").replace("%", "!%").replace("_", "!_")
-        clause = " WHERE " + " OR ".join(
-            f"CAST(`{c.replace('`', '``')}` AS CHAR) LIKE %s ESCAPE '!'"
-            for c in self.cols)
-        return clause, [f"%{pattern}%"] * len(self.cols)
+        self.refresh()
 
-    def load(self):
-        view = self.view.replace("`", "``")
+    def refresh(self):
+        view = REPORTS[self.report.get()]
         try:
-            if not self.cols:
-                self.cols = query(f"SELECT * FROM `{view}` LIMIT 1")[1]
-            clause, params = self.where()
-            sql = f"SELECT * FROM `{view}`{clause} ORDER BY 1 LIMIT %s OFFSET %s"
-            rows, names = query(
-                sql, params + [self.page_size + 1, self.page * self.page_size])
+            self.rows, self.columns = query(f"SELECT * FROM `{view}`")
         except mysql.connector.Error as error:
-            messagebox.showerror("Database error", str(error), parent=self.win)
+            messagebox.showerror(
+                "Could not load report",
+                f"The report view could not be loaded.\n\n{error}\n\n"
+                "Import database/reports.sql if the report views do not exist.",
+                parent=self.root,
+            )
             return
-        has_next = len(rows) > self.page_size
-        rows = rows[:self.page_size]
+
+        term = self.search.get().strip().lower()
+        if term:
+            self.rows = [
+                row for row in self.rows
+                if term in " ".join("" if value is None else str(value)
+                                    for value in row).lower()
+            ]
+
         self.tree.delete(*self.tree.get_children())
-        self.tree["columns"] = names
-        for n in names:
-            self.tree.heading(n, text=n)
-            self.tree.column(n, width=130, anchor="w")
-        for r in rows:
-            self.tree.insert("", "end",
-                             values=["" if v is None else v for v in r])
-        self.page_label.set(f"Page {self.page + 1} - {len(rows)} row(s) shown")
-        self.previous_button.configure(state="normal" if self.page > 0 else "disabled")
-        self.next_button.configure(state="normal" if has_next else "disabled")
+        self.tree["columns"] = self.columns
+        for column in self.columns:
+            self.tree.heading(column, text=column)
+            self.tree.column(column, width=130, anchor="w")
+        for row in self.rows:
+            self.tree.insert(
+                "", "end",
+                values=["" if value is None else value for value in row],
+            )
+        self.status.set(
+            f"{self.report.get()} - {len(self.rows)} record(s) shown")
 
-    def run_search(self):
-        self.page = 0
-        self.load()
-
-    def clear_search(self):
-        self.search.set("")
-        self.page = 0
-        self.load()
-
-    def previous_page(self):
-        if self.page > 0:
-            self.page -= 1
-            self.load()
-
-    def next_page(self):
-        self.page += 1
-        self.load()
-
-    def export(self):
+    def export_csv(self):
+        if not self.columns:
+            messagebox.showwarning(
+                "Nothing to export", "Load a report before exporting it.",
+                parent=self.root,
+            )
+            return
         path = filedialog.asksaveasfilename(
-            parent=self.win, defaultextension=".csv",
-            initialfile=f"{self.view}.csv", filetypes=[("CSV file", "*.csv")])
+            parent=self.root,
+            title="Export report as CSV",
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile=self.report.get().lower().replace(" ", "_") + ".csv",
+        )
         if not path:
             return
-        view = self.view.replace("`", "``")
         try:
-            clause, params = self.where()
-            rows, names = query(f"SELECT * FROM `{view}`{clause} ORDER BY 1", params)
-            with open(path, "w", newline="", encoding="utf-8-sig") as handle:
-                writer = csv.writer(handle)
-                writer.writerow(names)
-                writer.writerows(rows)
-        except (mysql.connector.Error, OSError) as error:
-            messagebox.showerror("Could not export", str(error), parent=self.win)
+            with open(path, "w", newline="", encoding="utf-8-sig") as output:
+                writer = csv.writer(output)
+                writer.writerow(self.columns)
+                writer.writerows(self.rows)
+        except OSError as error:
+            messagebox.showerror(
+                "Export failed", f"Could not save the report:\n{error}",
+                parent=self.root,
+            )
             return
-        messagebox.showinfo("Exported", f"Saved {len(rows)} row(s) to\n{path}",
-                            parent=self.win)
+        messagebox.showinfo("Export complete", f"Report saved to:\n{path}",
+                            parent=self.root)
 
 
 def open_form(root, table):
@@ -1105,9 +1159,13 @@ def open_menu(root):
     tk.Label(head, text="TMIS - Training Management Information System",
              bg=PURPLE, fg="white", font=("Segoe UI", 14, "bold"),
              pady=12).pack(side="left", padx=16)
+    tk.Label(root, text="Choose a form to open", font=("Segoe UI", 12)).pack(pady=(16, 8))
+    tk.Button(
+        root, text="Open reports", width=48, pady=10, bg=PURPLE, fg="white",
+        font=("Segoe UI", 10, "bold"),
+        command=lambda: open_reports(root),
+    ).pack(pady=(0, 10))
     tables, views = list_objects()
-
-    tk.Label(root, text="Data entry forms", font=("Segoe UI", 12, "bold")).pack(pady=(14, 4))
     grid = tk.Frame(root)
     grid.pack(padx=24, pady=4)
     for i, t in enumerate(tables):
@@ -1126,6 +1184,20 @@ def open_menu(root):
                       fg="#222", font=("Segoe UI", 10, "bold"),
                       command=lambda v=v: open_view(root, v)).grid(
                           row=i // 2, column=i % 2, padx=8, pady=5)
+
+
+def open_reports(root):
+    from pathlib import Path
+    import importlib.util
+
+    report_path = Path(__file__).resolve().parent.parent / "reports" / "tmis_reports.py"
+    spec = importlib.util.spec_from_file_location("tmis_reports", report_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load reports module: {report_path}")
+    reports_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(reports_module)
+    open_report_window = reports_module.open_reports
+    open_report_window(root)
 
 
 if __name__ == "__main__":
