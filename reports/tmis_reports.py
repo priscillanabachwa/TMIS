@@ -1,9 +1,11 @@
 """TMIS report viewer, filtering, pagination, and CSV export."""
 import csv
 import html
+import re
 import sys
+import traceback
 import tkinter as tk
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -19,6 +21,7 @@ from db_config import get_connection
 
 PURPLE = "#5B3FA6"
 PAGE_SIZE = 100
+EXPORT_DIR = Path(__file__).resolve().parent.parent / "exports"
 
 REPORTS = {
     "Course performance and revenue": "rpt_course_performance_summary",
@@ -33,6 +36,12 @@ DATE_COLUMNS = {
     "sessiondate": "Session date",
     "issuedate": "Issue date",
     "enrollmentdate": "Enrollment date",
+    "paymentdate": "Payment date",
+    "registrationdate": "Registration date",
+    "datesent": "Date sent",
+    "datejoined": "Date joined",
+    "createdat": "Date created",
+    "recordedat": "Date recorded",
 }
 FILTER_COLUMNS = {
     "certificationeligibility": "Eligibility",
@@ -42,6 +51,65 @@ FILTER_COLUMNS = {
     "certificatestatus": "Certificate",
     "enrollmentstatus": "Enrollment",
     "sessionstatus": "Session",
+    "traineestatus": "Trainee",
+    "staffstatus": "Staff",
+    "accountstatus": "Account",
+    "deliverystatus": "Delivery",
+    "notificationtype": "Type",
+    "paymentmethod": "Method",
+    "role": "Role",
+    "gender": "Gender",
+}
+
+# Most rows a table or view can load into the report screen at once
+MAX_ROWS = 10000
+
+# Columns that must never be shown in a report
+HIDDEN_COLUMNS = {"passwordhash"}
+
+TABLE_LABELS = {
+    "trainee": "Trainee", "course": "Course", "trainingsession": "Training session",
+    "enrollment": "Enrollment", "attendance": "Attendance", "payment": "Payment",
+    "certificate": "Certificate", "staff": "Staff", "useraccount": "User account",
+    "notification": "Notification",
+}
+
+# What the summary line above each report shows: (column, mode, argument)
+#   sum   - total of the column
+#   avg   - average of the column
+#   count - number of rows where the column equals the argument
+SUMMARY_COLUMNS = {
+    "rpt_course_performance_summary": [
+        ("TotalEnrolled", "sum", None),
+        ("TotalRevenueCollected", "sum", None),
+        ("OutstandingBalance", "sum", None),
+    ],
+    "rpt_trainee_attendance_eligibility": [
+        ("CertificationEligibility", "count", "ELIGIBLE"),
+        ("AttendancePercentage", "avg", None),
+    ],
+    "rpt_outstanding_debtors": [
+        ("TotalAmountPaid", "sum", None),
+        ("BalanceDue", "sum", None),
+    ],
+    "rpt_trainer_workload": [
+        ("TotalSessionsAssigned", "sum", None),
+        ("CompletedSessions", "sum", None),
+        ("UpcomingSessions", "sum", None),
+    ],
+    "rpt_session_attendance_register": [
+        ("AttendanceStatus", "count", "present"),
+        ("AttendanceStatus", "count", "not recorded"),
+    ],
+    "rpt_certificate_dispatch": [
+        ("CertificateStatus", "count", "issued"),
+    ],
+    "Payment": [
+        ("AmountPaid", "sum", None),
+    ],
+    "Course": [
+        ("MaximumCapacity", "sum", None),
+    ],
 }
 
 # All valid statuses defined in schema.sql CHECK constraints
@@ -57,6 +125,8 @@ SCHEMA_STATUSES = {
         "INELIGIBLE (Low Attendance)",
         "INELIGIBLE (Pending Payment)",
         "INELIGIBLE (Attendance & Payment Deficit)",
+        "PENDING (No Sessions Scheduled)",
+        "NOT APPLICABLE (Enrollment Ended)",
     ),
     "traineestatus": ("active", "inactive", "archived"),
     "staffstatus": ("active", "inactive", "archived"),
@@ -152,7 +222,6 @@ CUSTOM_LABELS = {
 
 
 def format_header(column_name):
-    import re
     col_lower = str(column_name).lower()
     if col_lower in CUSTOM_LABELS:
         return CUSTOM_LABELS[col_lower]
@@ -160,10 +229,20 @@ def format_header(column_name):
     return re.sub(r"\bId\b", "ID", spaced)
 
 
+def format_time(value):
+    total = int(value.total_seconds())
+    return f"{total // 3600:02d}:{total % 3600 // 60:02d}:{total % 60:02d}"
+
+
 def format_cell(column_name, value):
     if value is None:
         return ""
+    if isinstance(value, timedelta):
+        return format_time(value)
     col_lower = column_name.lower()
+    # Identifier columns (TraineeID, CourseID ...) are shown as plain numbers
+    if str(column_name).endswith("ID") and not isinstance(value, str):
+        return str(value)
     # Percentages
     if "percent" in col_lower or "percentage" in col_lower or "utilization" in col_lower:
         try:
@@ -203,12 +282,47 @@ def query(sql, params=()):
         conn.close()
 
 
+def discover_sources():
+    """Map every dropdown label to a database object: reports first, then all
+    tables, then the other views."""
+    sources = dict(REPORTS)
+    try:
+        rows, _ = query("SHOW FULL TABLES")
+    except mysql.connector.Error:
+        return sources
+    tables = sorted(r[0] for r in rows if str(r[1]).upper() == "BASE TABLE")
+    views = sorted(r[0] for r in rows
+                   if str(r[1]).upper() == "VIEW"
+                   and not r[0].lower().startswith("rpt_"))
+    for name in tables:
+        sources[f"Table: {TABLE_LABELS.get(name.lower(), name)}"] = name
+    for name in views:
+        label = name[2:].replace("_", " ").capitalize() if name.lower().startswith("v_") else name
+        sources[f"View: {label}"] = name
+    return sources
+
+
+def safe_action(func):
+    """Show any error in a message box (and the terminal) instead of failing silently."""
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as error:
+            traceback.print_exc()
+            messagebox.showerror(
+                "Something went wrong",
+                f"{type(error).__name__}: {error}", parent=self.root)
+    wrapper.__name__ = func.__name__
+    return wrapper
+
+
 class ReportsApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Training Management Information System (TMIS) - Reports")
         self.root.geometry("1200x760")
-        self.report_names = list(REPORTS)
+        self.sources = discover_sources()
+        self.report_names = list(self.sources)
         self.report = tk.StringVar(value=self.report_names[0])
         self.search = tk.StringVar()
         self.date_from = tk.StringVar()
@@ -219,6 +333,7 @@ class ReportsApp:
         self.rows = []
         self.page = 0
         self.view_ready = False
+        self.ask_location = tk.BooleanVar(value=False)
 
         head = tk.Frame(root, bg=PURPLE)
         head.pack(fill="x")
@@ -232,7 +347,7 @@ class ReportsApp:
         tk.Label(controls, text="Report:").grid(row=0, column=0, sticky="w")
         picker = ttk.Combobox(
             controls, textvariable=self.report, values=self.report_names,
-            state="readonly", width=38
+            state="readonly", width=44
         )
         picker.grid(row=0, column=1, padx=(8, 18), sticky="w")
         picker.bind("<<ComboboxSelected>>", lambda event: self.refresh())
@@ -269,6 +384,8 @@ class ReportsApp:
                   command=self.clear_filters).pack(side="left", padx=6)
         tk.Button(date_controls, text="Export CSV",
                   command=self.export_csv).pack(side="right")
+        tk.Checkbutton(date_controls, text="Choose save location",
+                       variable=self.ask_location).pack(side="right", padx=10)
         tk.Button(date_controls, text="Print / HTML",
                   command=self.export_html).pack(side="right", padx=6)
         tk.Button(date_controls, text="Export PDF",
@@ -341,27 +458,39 @@ class ReportsApp:
 
     def check_view(self, view):
         rows, _ = query(
-            "SELECT COUNT(*) FROM information_schema.VIEWS "
+            "SELECT COUNT(*) FROM information_schema.TABLES "
             "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s", (view,))
         return rows[0][0] == 1
 
     def refresh(self):
-        view = REPORTS[self.report.get()]
+        view = self.sources[self.report.get()]
         self.page = 0
+        self.truncated = False
         try:
             self.view_ready = self.check_view(view)
             if not self.view_ready:
                 self.all_rows = []
                 self.columns = []
                 self.show_rows([])
+                if view.lower().startswith("rpt_"):
+                    advice = "Import reports.sql from the database folder first."
+                else:
+                    advice = "Check that the database is up to date."
                 messagebox.showerror(
                     "Report is not installed",
-                    f"The view {view} does not exist in tmis_db.\n\n"
-                    "Import reports.sql from the database folder first.",
+                    f"{view} does not exist in tmis_db.\n\n{advice}",
                     parent=self.root,
                 )
                 return
-            self.all_rows, self.columns = query(f"SELECT * FROM `{view}`")
+            order = "" if view.lower().startswith("rpt_") else " ORDER BY 1"
+            rows, columns = query(
+                f"SELECT * FROM `{view}`{order} LIMIT {MAX_ROWS + 1}")
+            self.truncated = len(rows) > MAX_ROWS
+            rows = rows[:MAX_ROWS]
+            keep = [i for i, name in enumerate(columns)
+                    if name.lower() not in HIDDEN_COLUMNS]
+            self.columns = [columns[i] for i in keep]
+            self.all_rows = [tuple(row[i] for i in keep) for row in rows]
         except mysql.connector.Error as error:
             messagebox.showerror(
                 "Could not load report",
@@ -510,8 +639,10 @@ class ReportsApp:
                 values=[format_cell(col, val) for col, val in zip(self.columns, row)],
             )
         self.summary.set(self.summary_text(rows))
+        note = (f"  (only the first {MAX_ROWS:,d} rows are loaded)"
+                if getattr(self, "truncated", False) else "")
         self.status.set(
-            f"{self.report.get()} - {len(rows)} matching record(s)")
+            f"{self.report.get()} - {len(rows)} matching record(s){note}")
         self.empty_message.set(
             "" if rows else self.empty_text(self.report.get()))
         total_pages = max(1, (len(rows) + PAGE_SIZE - 1) // PAGE_SIZE)
@@ -522,26 +653,28 @@ class ReportsApp:
             state="normal" if start + PAGE_SIZE < len(rows) else "disabled")
 
     def summary_text(self, rows):
-        numeric_totals = []
-        for index, column in enumerate(self.columns):
-            col_lower = column.lower()
-            if col_lower.endswith("id") or col_lower in ("traineeid", "courseid", "staffid", "sessionid", "certificateid"):
+        parts = [f"Records: {len(rows)}"]
+        view = self.sources.get(self.report.get(), "")
+        lower_columns = [column.lower() for column in self.columns]
+        for column, mode, argument in SUMMARY_COLUMNS.get(view, []):
+            if column.lower() not in lower_columns:
                 continue
-            if any(value is not None and isinstance(value, (int, float, Decimal))
-                   for value in (row[index] for row in rows)):
-                total = sum(
-                    float(value) for value in (row[index] for row in rows)
-                    if isinstance(value, (int, float, Decimal))
-                )
-                if "percent" in col_lower or "percentage" in col_lower or "utilization" in col_lower:
-                    avg = total / len(rows) if rows else 0
-                    numeric_totals.append(f"Avg {column}: {avg:.1f}%")
-                elif any(k in col_lower for k in ("fee", "paid", "balance", "revenue", "amount")):
-                    numeric_totals.append(f"{column}: {total:,.2f}")
-                else:
-                    numeric_totals.append(f"{column}: {int(round(total)):,d}")
-        return f"Records: {len(rows)}" + (
-            " | " + " | ".join(numeric_totals[:3]) if numeric_totals else "")
+            index = lower_columns.index(column.lower())
+            label = format_header(column)
+            values = [row[index] for row in rows]
+            if mode == "count":
+                parts.append(f"{label} = {argument}: "
+                             f"{sum(1 for v in values if str(v) == argument):,d}")
+                continue
+            numbers = [float(v) for v in values
+                       if isinstance(v, (int, float, Decimal))]
+            if not numbers:
+                continue
+            if mode == "avg":
+                parts.append(f"Average {label}: {sum(numbers) / len(numbers):.1f}%")
+            else:
+                parts.append(f"Total {label}: {format_cell(column, sum(numbers))}")
+        return " | ".join(parts)
 
     @staticmethod
     def empty_text(report):
@@ -563,6 +696,17 @@ class ReportsApp:
             self.page += 1
             self.show_rows(self.rows)
 
+    def pick_path(self, extension, title, filetypes):
+        name = (re.sub(r"[^a-z0-9]+", "_", self.report.get().lower()).strip("_") + "_"
+                + datetime.now().strftime("%Y%m%d_%H%M%S") + extension)
+        if self.ask_location.get():
+            return filedialog.asksaveasfilename(
+                parent=self.root, title=title, defaultextension=extension,
+                filetypes=filetypes, initialfile=name) or None
+        EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        return str(EXPORT_DIR / name)
+
+    @safe_action
     def export_csv(self):
         if not self.columns:
             messagebox.showwarning(
@@ -570,19 +714,17 @@ class ReportsApp:
                 parent=self.root,
             )
             return
-        path = filedialog.asksaveasfilename(
-            parent=self.root, title="Export report as CSV",
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-            initialfile=self.report.get().lower().replace(" ", "_") + ".csv",
-        )
+        path = self.pick_path(".csv", "Export report as CSV",
+                              [("CSV files", "*.csv"), ("All files", "*.*")])
         if not path:
             return
         try:
             with open(path, "w", newline="", encoding="utf-8-sig") as output:
                 writer = csv.writer(output)
                 writer.writerow(self.columns)
-                writer.writerows(self.rows)
+                writer.writerows(
+                    [format_time(v) if isinstance(v, timedelta) else v for v in row]
+                    for row in self.rows)
         except OSError as error:
             messagebox.showerror(
                 "Export failed", f"Could not save the report:\n{error}",
@@ -592,6 +734,7 @@ class ReportsApp:
         messagebox.showinfo("Export complete", f"Report saved to:\n{path}",
                             parent=self.root)
 
+    @safe_action
     def export_html(self):
         if not self.columns:
             messagebox.showwarning(
@@ -599,12 +742,8 @@ class ReportsApp:
                 parent=self.root,
             )
             return
-        path = filedialog.asksaveasfilename(
-            parent=self.root, title="Save print-ready report",
-            defaultextension=".html",
-            filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
-            initialfile=self.report.get().lower().replace(" ", "_") + ".html",
-        )
+        path = self.pick_path(".html", "Save print-ready report",
+                              [("HTML files", "*.html"), ("All files", "*.*")])
         if not path:
             return
         title = html.escape(self.report.get())
@@ -632,6 +771,9 @@ th {{ background: #EFEAFB; }} @media print {{ button {{ display: none; }} }}
 </body></html>"""
         try:
             Path(path).write_text(document, encoding="utf-8")
+            messagebox.showinfo("Report saved",
+                                f"Print-ready report saved to:\n{path}",
+                                parent=self.root)
             webbrowser.open(Path(path).as_uri())
         except OSError as error:
             messagebox.showerror(
@@ -639,6 +781,7 @@ th {{ background: #EFEAFB; }} @media print {{ button {{ display: none; }} }}
                 parent=self.root,
             )
 
+    @safe_action
     def export_pdf(self):
         if not self.columns:
             messagebox.showwarning(
@@ -647,22 +790,27 @@ th {{ background: #EFEAFB; }} @media print {{ button {{ display: none; }} }}
             )
             return
 
-        path = filedialog.asksaveasfilename(
-            parent=self.root,
-            title="Export report as PDF",
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
-            initialfile=self.report.get().lower().replace(" ", "_") + ".pdf",
-        )
-        if not path:
-            return
-
         try:
             from reportlab.lib.pagesizes import A4, landscape, portrait
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib import colors
+        except ImportError:
+            messagebox.showerror(
+                "PDF export needs one more package",
+                "The reportlab package is not installed.\n\n"
+                "Run this in the terminal, then try again:\n"
+                "pip install reportlab",
+                parent=self.root,
+            )
+            return
 
+        path = self.pick_path(".pdf", "Export report as PDF",
+                              [("PDF files", "*.pdf"), ("All files", "*.*")])
+        if not path:
+            return
+
+        try:
             is_landscape = len(self.columns) > 5
             pagesize = landscape(A4) if is_landscape else portrait(A4)
 
@@ -712,22 +860,24 @@ th {{ background: #EFEAFB; }} @media print {{ button {{ display: none; }} }}
 
             story = []
             full_pdf_title = f"Training Management Information System (TMIS) - {self.report.get()}"
-            story.append(Paragraph(full_pdf_title, title_style))
+            story.append(Paragraph(html.escape(full_pdf_title), title_style))
 
             summary_info = self.summary.get()
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            story.append(Paragraph(f"Generated: {timestamp} | {summary_info}", meta_style))
+            story.append(Paragraph(
+                html.escape(f"Generated: {timestamp} | {summary_info}"), meta_style))
             story.append(Spacer(1, 6))
 
             table_data = []
-            header_row = [Paragraph(format_header(str(col)), th_style) for col in self.columns]
+            header_row = [Paragraph(html.escape(format_header(str(col))), th_style)
+                          for col in self.columns]
             table_data.append(header_row)
 
             for row in self.rows:
                 row_cells = []
                 for col_name, val in zip(self.columns, row):
                     formatted_val = format_cell(col_name, val)
-                    row_cells.append(Paragraph(formatted_val, td_style))
+                    row_cells.append(Paragraph(html.escape(formatted_val), td_style))
                 table_data.append(row_cells)
 
             table_style = TableStyle([
@@ -749,12 +899,12 @@ th {{ background: #EFEAFB; }} @media print {{ button {{ display: none; }} }}
             story.append(report_table)
 
             doc.build(story)
-            webbrowser.open(Path(path).as_uri())
             messagebox.showinfo(
                 "PDF Export Complete",
                 f"Report successfully saved to:\n{path}",
                 parent=self.root,
             )
+            webbrowser.open(Path(path).as_uri())
         except Exception as error:
             messagebox.showerror(
                 "PDF Export Failed",
