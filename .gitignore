@@ -1,3 +1,10 @@
 .env
 forms/db_config.py
 __pycache__/
+__pycache__/
+*.pyc
+exports/
+.env
+TMISvenv/
+.venv/
+tempCodeRunnerFile.*
