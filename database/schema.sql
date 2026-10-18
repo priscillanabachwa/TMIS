@@ -1,6 +1,6 @@
 CREATE DATABASE IF NOT EXISTS tmis_db
     CHARACTER SET utf8mb4;
-
+ 
 USE tmis_db;
 
 CREATE TABLE UserAccount (
