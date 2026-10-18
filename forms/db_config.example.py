@@ -4,7 +4,7 @@ def get_connection():
     return mysql.connector.connect(
         host="localhost",
         user="root",
-        password="MySql123",
+        password="mysql2004",
         database="tmis_db",
         use_pure=True,
     )
