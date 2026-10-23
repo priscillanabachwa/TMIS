@@ -1,6 +1,6 @@
 CREATE DATABASE IF NOT EXISTS tmis_db
     CHARACTER SET utf8mb4;
- 
+
 USE tmis_db;
 
 CREATE TABLE UserAccount (
@@ -231,6 +231,7 @@ CREATE TABLE IF NOT EXISTS Certificate (
 CREATE TABLE IF NOT EXISTS Notification (
     NotificationID INT AUTO_INCREMENT PRIMARY KEY,
     UserID INT NOT NULL,
+    
     NotificationType VARCHAR(20) NOT NULL,
     MessageContent TEXT NOT NULL,
     DateSent DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
