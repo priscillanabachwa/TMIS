@@ -1,3 +1,5 @@
-.env
-forms/db_config.py
+.venv/
 __pycache__/
+*.pyc
+.env
+*.sqlite3
