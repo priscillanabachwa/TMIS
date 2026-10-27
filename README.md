@@ -41,8 +41,10 @@ If your tables and data already exist, DO NOT rerun schema.sql or seed scripts.
 The SQL scripts are reference copies of your supplied project, not migrations.
 For a completely empty database only, import in this order using Workbench:
 schema.sql, triggers.sql, seed.sql, seed_training.sql, seed_payments.sql,
-seed_completion.sql, reports.sql. Then run the Django commands above.
-These seed scripts are not safe to run repeatedly.
+seed_completion.sql, reports.sql. To add the extra synthetic sample records,
+run `database/seed_sample.sql` last. Do not rerun the schema or base seed scripts
+against a database that already contains data; the extra sample script is
+designed to skip its own existing rows when run again.
 
 ## What this first version does
 
