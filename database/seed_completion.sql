@@ -2,17 +2,17 @@ USE tmis_db;
 
 SET @trainee_id = (
     SELECT TraineeID FROM Trainee
-    WHERE Email = 'trainee@example.com'
+    WHERE Email = 'agnes.namusoke@example.test'
 );
 
 SET @trainer_id = (
     SELECT StaffID FROM Staff
-    WHERE Email = 'trainer@example.com'
+    WHERE Email = 'james.ssekandi@example.test'
 );
 
 SET @admin_id = (
     SELECT StaffID FROM Staff
-    WHERE Email = 'admin@example.com'
+    WHERE Email = 'sarah.nalugemasarah@example.test'
 );
 
 SET @user_id = (

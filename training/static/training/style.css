@@ -4,3 +4,5 @@ aside{overflow-y:auto}nav a{padding:11px 16px}.navlabel{margin-top:35px}.asidefo
 
 .welcome{padding:22px 30px;gap:24px}.welcome h2{font-size:24px;line-height:1.25}.welcome p{margin:10px 0;max-width:650px}.welcome h2 br{display:none}.seal{width:115px;height:115px;margin:0 15px}.seal span{font-size:28px}.seal small{font-size:7px;letter-spacing:1px}.fieldhelp{font-size:12px;line-height:1.6;color:#65776c;margin-top:7px}.fieldhelp ul{padding-left:18px;margin:4px 0}.adminlabel{margin:22px 12px 10px}.accountlinks{display:flex;gap:14px;flex-wrap:wrap}input[type=checkbox]{width:auto;margin-right:8px}.accountnote{max-width:850px}@media(max-width:900px){.adminlabel{width:100%;margin:15px 12px 0}}
 .portalsection{margin-top:26px}.messagecell{white-space:normal;min-width:220px;max-width:600px}.certificate-controls{display:flex;gap:15px}
+
+.badge-success{background:#e5f3e9;color:#24633d}.badge-warning{background:#fff2ce;color:#805b10}.badge-info{background:#e6effb;color:#285d91}.badge-neutral{background:#edf0f2;color:#58616c}.badge-danger{background:#fbe7e7;color:#a13030}

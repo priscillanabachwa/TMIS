@@ -1,5 +1,18 @@
 # TMIS website first version
 
+### Catalogue and presentation refresh
+
+After loading the existing seed scripts (including `seed_sample.sql`), run
+`database/refresh_catalogue.sql` in MySQL Workbench against `tmis_db`.
+It replaces known Demo profiles with fictional named profiles, adds 6 courses,
+and fills missing status examples across the sample records. It can be repeated
+without duplicating the added courses or payments. Existing confirmed revenue
+is preserved. Names in these scripts are sample identities, not verified users.
+Website login credentials remain managed through Website users.
+
+Course fees, payment amounts and financial reports display thousands separators.
+Course status is visible in the catalogue; lifecycle statuses use labelled badges.
+
 A Django website for your existing NFSI MySQL database. Includes staff login,
 a dashboard with live enrollment/payment totals, trainee and course search,
 pagination, and create/edit forms. Uses your exact table and column names.

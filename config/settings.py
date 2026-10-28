@@ -9,6 +9,9 @@ MIDDLEWARE = ['django.middleware.security.SecurityMiddleware','django.contrib.se
 ROOT_URLCONF = 'config.urls'
 TEMPLATES = [{'BACKEND':'django.template.backends.django.DjangoTemplates','DIRS':[],'APP_DIRS':True,'OPTIONS':{'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
 WSGI_APPLICATION = 'config.wsgi.application'
+TEMPLATES[0]['OPTIONS']['libraries'] = {
+    'training_display': 'training.templatetags.training_display',
+}
 DATABASES = {'default':{'ENGINE':'django.db.backends.mysql','NAME':os.environ.get('TMIS_DB_NAME','tmis_db'),'USER':os.environ.get('TMIS_DB_USER','tmis_web'),'PASSWORD':os.environ.get('TMIS_DB_PASSWORD',''),'HOST':os.environ.get('TMIS_DB_HOST','127.0.0.1'),'PORT':os.environ.get('TMIS_DB_PORT','3306'),'OPTIONS':{'charset':'utf8mb4','init_command':"SET sql_mode='STRICT_TRANS_TABLES'"}}}
 if os.environ.get('TMIS_TEST_SQLITE') == '1':
     DATABASES = {'default':{'ENGINE':'django.db.backends.sqlite3','NAME':BASE_DIR/'test.sqlite3'}}

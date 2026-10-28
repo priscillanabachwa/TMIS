@@ -91,7 +91,10 @@ def account_status(request,pk):
 
 @administrator
 def website_users(request):
-    return render(request,'training/website_users.html',{'users':WebsiteUser.objects.filter(Q(is_staff=True)|Q(portal_identity__isnull=False)).select_related('portal_identity__Account').order_by('username'),'section':'website_users','title':'Website users'})
+    return render(request,'training/website_users.html',{'users':website_user_accounts().select_related('portal_identity__Account').order_by('username'),'section':'website_users','title':'Website users'})
+
+def website_user_accounts():
+    return WebsiteUser.objects.filter(Q(is_superuser=True)|Q(is_staff=True)|Q(portal_identity__isnull=False))
 
 @administrator
 def website_user_create(request):
@@ -111,7 +114,7 @@ def website_user_create(request):
 
 @administrator
 def website_user_edit(request,pk):
-    user=get_object_or_404(WebsiteUser.objects.filter(Q(is_staff=True)|Q(portal_identity__isnull=False)),pk=pk)
+    user=get_object_or_404(website_user_accounts(),pk=pk)
     form=WebsiteUserEditForm(request.POST or None,instance=user)
     if request.method=='POST' and form.is_valid():
         if user.pk==request.user.pk and not form.cleaned_data['is_active']:
@@ -131,7 +134,7 @@ def website_user_edit(request,pk):
 
 @administrator
 def website_password(request,pk):
-    user=get_object_or_404(WebsiteUser.objects.filter(Q(is_staff=True)|Q(portal_identity__isnull=False)),pk=pk)
+    user=get_object_or_404(website_user_accounts(),pk=pk)
     form=SetPasswordForm(user,request.POST or None)
     if request.method=='POST' and form.is_valid():
         saved=form.save()
