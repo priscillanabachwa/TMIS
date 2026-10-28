@@ -4,14 +4,22 @@
 USE tmis_db;
 START TRANSACTION;
 
+-- Normalize existing sample email addresses as well as newly inserted profiles.
+UPDATE Trainee SET Email=CONCAT(LEFT(Email, CHAR_LENGTH(Email)-5), '.com')
+    WHERE Email LIKE '%.test';
+UPDATE Staff SET Email=CONCAT(LEFT(Email, CHAR_LENGTH(Email)-5), '.com')
+    WHERE Email LIKE '%.test';
+UPDATE auth_user SET email=CONCAT(LEFT(email, CHAR_LENGTH(email)-5), '.com')
+    WHERE email LIKE '%.test';
+
 UPDATE UserAccount SET Username='namusokeagnes' WHERE Username='demo_trainee';
 UPDATE UserAccount SET Username='ssekandijames' WHERE Username='demo_trainer';
 UPDATE UserAccount SET Username='nalugemasarah' WHERE Username='demo_admin';
-UPDATE Trainee SET FullName='Namusoke Agnes', Email='agnes.namusoke@example.test',
+UPDATE Trainee SET FullName='Namusoke Agnes', Email='agnes.namusoke@example.com',
     Organization='Central Food Processors' WHERE FullName='Demo Trainee';
-UPDATE Staff SET FullName='Ssekandi James', Email='james.ssekandi@example.test'
+UPDATE Staff SET FullName='Ssekandi James', Email='james.ssekandi@example.com'
     WHERE FullName='Demo Trainer';
-UPDATE Staff SET FullName='Nalugema Sarah', Email='sarah.nalugemasarah@example.test'
+UPDATE Staff SET FullName='Nalugema Sarah', Email='sarah.nalugemasarah@example.com'
     WHERE FullName='Demo Administrator';
 
 -- Natural keys make catalogue expansion safe to repeat without overwriting courses.
@@ -46,4 +54,25 @@ FROM Enrollment e JOIN Trainee t ON t.TraineeID=e.TraineeID
 CROSS JOIN (SELECT 'pending' status UNION ALL SELECT 'failed' UNION ALL SELECT 'reversed') n
 WHERE e.EnrollmentID=118 AND t.NIN='SAMPLE-NIN-115'
 AND NOT EXISTS (SELECT 1 FROM Payment p WHERE p.TransactionReference=CONCAT('SAMPLE-LIFECYCLE-', n.status));
+-- Retain separate inactive examples alongside archived historical profiles.
+INSERT INTO UserAccount (Username, PasswordHash, Role, AccountStatus)
+SELECT 'namutebimiriam', '!', 'trainee', 'inactive'
+WHERE NOT EXISTS (SELECT 1 FROM UserAccount WHERE Username='namutebimiriam');
+INSERT INTO UserAccount (Username, PasswordHash, Role, AccountStatus)
+SELECT 'lubegapeter', '!', 'trainer', 'inactive'
+WHERE NOT EXISTS (SELECT 1 FROM UserAccount WHERE Username='lubegapeter');
+
+INSERT INTO Trainee (UserID, FullName, DateOfBirth, Gender, NIN, PhoneNo,
+    Email, Organization, Address, RegistrationDate, TraineeStatus)
+SELECT UserID, 'Namutebi Miriam', '1994-04-12', 'female', 'SAMPLE-NIN-116',
+    '0771000116', 'miriam.namutebi@example.com', 'Central Food Processors',
+    'Kampala', '2026-10-20', 'inactive'
+FROM UserAccount WHERE Username='namutebimiriam'
+AND NOT EXISTS (SELECT 1 FROM Trainee WHERE NIN='SAMPLE-NIN-116');
+
+INSERT INTO Staff (UserID, FullName, Role, Email, PhoneNo, Department, StaffStatus, DateJoined)
+SELECT UserID, 'Lubega Peter', 'trainer', 'peter.lubega@example.com',
+    '0700000206', 'Training', 'inactive', '2026-07-01'
+FROM UserAccount WHERE Username='lubegapeter'
+AND NOT EXISTS (SELECT 1 FROM Staff WHERE Email='peter.lubega@example.com');
 COMMIT;

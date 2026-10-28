@@ -6,7 +6,7 @@ SET @safety_enrollment = (
     FROM Enrollment e
     JOIN Trainee t ON t.TraineeID = e.TraineeID
     JOIN Course c ON c.CourseID = e.CourseID
-    WHERE t.Email = 'agnes.namusoke@example.test'
+    WHERE t.Email = 'agnes.namusoke@example.com'
       AND c.CourseName = 'Basic Food Safety'
 );
 
@@ -15,14 +15,14 @@ SET @hygiene_enrollment = (
     FROM Enrollment e
     JOIN Trainee t ON t.TraineeID = e.TraineeID
     JOIN Course c ON c.CourseID = e.CourseID
-    WHERE t.Email = 'agnes.namusoke@example.test'
+    WHERE t.Email = 'agnes.namusoke@example.com'
       AND c.CourseName = 'Food Hygiene'
 );
 
 SET @trainee_user = (
     SELECT UserID
     FROM Trainee
-    WHERE Email = 'agnes.namusoke@example.test'
+    WHERE Email = 'agnes.namusoke@example.com'
 );
 
 START TRANSACTION;
