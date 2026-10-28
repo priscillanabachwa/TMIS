@@ -18,7 +18,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Attendance',
             fields=[
-                ('pk', models.CompositePrimaryKey('Session_id', 'Trainee_id', blank=True, editable=False, primary_key=True, serialize=False)),
+                ('Session', models.ForeignKey(db_column='SessionID', on_delete=django.db.models.deletion.PROTECT, primary_key=True, to='training.trainingsession')),
+                ('Trainee', models.ForeignKey(db_column='TraineeID', on_delete=django.db.models.deletion.PROTECT, to='training.trainee')),
                 ('AttendanceStatus', models.CharField(choices=[('present', 'Present'), ('absent', 'Absent'), ('late', 'Late'), ('excused', 'Excused')], max_length=20)),
                 ('CheckInTime', models.DateTimeField(blank=True, null=True)),
                 ('RecordedAt', models.DateTimeField(auto_now_add=True)),

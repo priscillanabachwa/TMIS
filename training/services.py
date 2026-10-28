@@ -1,7 +1,7 @@
 """Transactional rules for website writes. Direct SQL/desktop writes are separate."""
 from decimal import Decimal
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Sum
 from django.utils import timezone
 from .models import Course,Trainee,Staff,Enrollment,TrainingSession,Attendance,Payment,Certificate,Notification
@@ -89,8 +89,18 @@ def save_attendance(obj,trainer_id=None):
         require(timezone.localtime(obj.CheckInTime).date()==session.SessionDate,'Check-in date must match the training session date.')
     if obj._state.adding:
         require(not Attendance.objects.filter(Session_id=obj.Session_id,Trainee_id=obj.Trainee_id).exists(),'Attendance has already been recorded for this trainee and session.')
-        obj.save(force_insert=True)
-    else: obj.save(force_update=True)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'INSERT INTO Attendance (SessionID,TraineeID,RecordedBy,AttendanceStatus,CheckInTime) VALUES (%s,%s,%s,%s,%s)',
+                [obj.Session_id,obj.Trainee_id,obj.RecordedBy_id,obj.AttendanceStatus,obj.CheckInTime],
+            )
+        obj._state.adding = False
+    else:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'UPDATE Attendance SET RecordedBy=%s,AttendanceStatus=%s,CheckInTime=%s WHERE SessionID=%s AND TraineeID=%s',
+                [obj.RecordedBy_id,obj.AttendanceStatus,obj.CheckInTime,obj.Session_id,obj.Trainee_id],
+            )
 
 @transaction.atomic
 def save_payment(obj):

@@ -15,8 +15,8 @@ folder and open it in VS Code. In the PowerShell terminal:
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 $env:TMIS_DB_NAME="tmis_db"
-$env:TMIS_DB_USER="your_mysql_username"
-$env:TMIS_DB_PASSWORD="your_mysql_password"
+$env:TMIS_DB_USER="root"
+$env:TMIS_DB_PASSWORD="MySql123"
 $env:TMIS_DB_HOST="127.0.0.1"
 $env:TMIS_DB_PORT="3306"
 .\.venv\Scripts\python.exe manage.py check
@@ -28,7 +28,9 @@ $env:TMIS_DB_PORT="3306"
 Open http://127.0.0.1:8000/ and sign in using the superuser you just created.
 Set connection variables again when you open a new terminal. They are read from
 the environment, not a .env file. No real database password is included here.
-MySQL 8 or newer is recommended for the supplied schema constraints.
+MySQL 8 or newer is recommended for the supplied schema constraints. If you
+use MariaDB 10.4, this project uses Django 4.2 because newer Django versions
+require MariaDB 10.5 or later.
 
 `migrate` ADDS Django authentication/session tables to your existing database;
 it does not replace the ten project tables. The DB account needs privileges

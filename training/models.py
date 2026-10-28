@@ -86,8 +86,7 @@ class TrainingSession(models.Model):
         db_table = 'TrainingSession'
 
 class Attendance(models.Model):
-    pk = models.CompositePrimaryKey('Session_id','Trainee_id')
-    Session = models.ForeignKey(TrainingSession,models.PROTECT,db_column='SessionID')
+    Session = models.ForeignKey(TrainingSession,models.PROTECT,db_column='SessionID',primary_key=True)
     Trainee = models.ForeignKey(Trainee,models.PROTECT,db_column='TraineeID')
     RecordedBy = models.ForeignKey(Staff,models.PROTECT,db_column='RecordedBy',blank=True,null=True)
     AttendanceStatus = models.CharField(max_length=20,choices=[(x,x.title()) for x in ['present','absent','late','excused']])

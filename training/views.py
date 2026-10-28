@@ -93,7 +93,13 @@ def module_records(request,kind):
 @login_required
 def module_edit(request,kind,key=None):
     cfg=module_config(kind)
-    instance=get_object_or_404(cfg['model'],pk=resolve_key(cfg['model'],key)) if key else None
+    if key and cfg['model'].__name__=='Attendance':
+        parts=key.split('-')
+        if len(parts)!=2:
+            raise Http404
+        instance=get_object_or_404(cfg['model'],Session_id=int(parts[0]),Trainee_id=int(parts[1]))
+    else:
+        instance=get_object_or_404(cfg['model'],pk=resolve_key(cfg['model'],key)) if key else None
     form=cfg['form'](request.POST or None,instance=instance)
     if request.method=='POST' and form.is_valid():
         try: cfg['save'](form.save(commit=False))
