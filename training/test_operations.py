@@ -15,7 +15,19 @@ class OperationsTests(TransactionTestCase):
     def setUpClass(cls):
         super().setUpClass()
         with connection.schema_editor() as editor:
-            for model in MODELS: editor.create_model(model)
+            for model in MODELS:
+                if model is Attendance:
+                    # Match the existing MySQL composite key, rather than the
+                    # single-column PK Django 4.2 uses to represent this table.
+                    editor.execute('''CREATE TABLE Attendance (
+                        SessionID INTEGER NOT NULL REFERENCES TrainingSession(SessionID),
+                        TraineeID INTEGER NOT NULL REFERENCES Trainee(TraineeID),
+                        RecordedBy INTEGER NULL REFERENCES Staff(StaffID),
+                        AttendanceStatus VARCHAR(20) NOT NULL,
+                        CheckInTime DATETIME NULL, RecordedAt DATETIME NOT NULL,
+                        PRIMARY KEY (SessionID, TraineeID))''')
+                else:
+                    editor.create_model(model)
     @classmethod
     def tearDownClass(cls):
         with connection.schema_editor() as editor:
@@ -66,6 +78,128 @@ class OperationsTests(TransactionTestCase):
             self.assertEqual(self.client.get('/reports/',{'report':report}).status_code,200)
         self.assertEqual(self.client.get('/reports/?export=csv').status_code,200)
         self.assertEqual(self.client.get('/reports/?print=1').status_code,200)
+    def test_attendance_list_edit_links_include_both_ids(self):
+        row=self.attendance(self.session())
+        url=f'/operations/attendance/{row.Session_id}-{row.Trainee_id}/edit/'
+        self.assertContains(self.client.get('/operations/attendance/'),url)
+        self.assertEqual(self.client.get(url).status_code,200)
+        self.assertEqual(self.client.get('/operations/attendance/not-a-number/edit/').status_code,404)
+
+    def test_attendance_saves_multiple_trainees_in_one_session(self):
+        self.course.MaximumCapacity=2;self.course.save()
+        other=self.second_trainee()
+        save_enrollment(Enrollment(Trainee=other,Course=self.course,
+                                  EnrollmentDate=date.today(),EnrollmentStatus='active'))
+        session=self.session()
+        for trainee in [self.trainee,other]:
+            response=self.client.post('/operations/attendance/new/',{
+                'Session':session.pk,'Trainee':trainee.pk,'RecordedBy':self.trainer.pk,
+                'AttendanceStatus':'present','CheckInTime':''})
+            self.assertEqual(response.status_code,302)
+        self.assertEqual(Attendance.objects.filter(Session=session).count(),2)
+        self.assertIsNotNone(Attendance.objects.filter(Session=session).first().RecordedAt)
+        response=self.client.post('/operations/attendance/new/',{
+            'Session':session.pk,'Trainee':other.pk,'RecordedBy':self.trainer.pk,
+            'AttendanceStatus':'present','CheckInTime':''})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(Attendance.objects.filter(Session=session).count(),2)
+
+    def test_course_create_edit_search_and_validation_buttons(self):
+        data={'CourseName':'Practical Hygiene','Description':'Practical skills',
+              'Category':'Safety','Duration':'2 days','ModeOfDelivery':'hybrid',
+              'CourseFee':'150000','MaximumCapacity':'20','CourseStatus':'active',
+              'Prerequisites':''}
+        self.assertEqual(self.client.post('/courses/new/',data).status_code,302)
+        course=Course.objects.get(CourseName='Practical Hygiene')
+        data['CourseName']='Updated Hygiene'
+        self.assertEqual(self.client.post(f'/courses/{course.pk}/edit/',data).status_code,302)
+        self.assertContains(self.client.get('/courses/?q=Updated'),'Updated Hygiene')
+        self.assertNotContains(self.client.get('/courses/?q=NoSuchCourse'),'Updated Hygiene')
+        data['CourseFee']='-1'
+        self.assertContains(self.client.post(f'/courses/{course.pk}/edit/',data),'Fee must be zero or greater.')
+        course.refresh_from_db();self.assertEqual(course.CourseFee,150000)
+
+    def test_session_create_edit_and_enrollment_status_buttons(self):
+        data={'Course':self.course.pk,'Trainer':self.trainer.pk,'SessionDate':date.today().isoformat(),
+              'StartTime':'09:00','EndTime':'12:00','VenuePlatform':'Room B','SessionStatus':'scheduled'}
+        self.assertEqual(self.client.post('/operations/sessions/new/',data).status_code,302)
+        session=TrainingSession.objects.get()
+        data['SessionStatus']='postponed'
+        self.assertEqual(self.client.post(f'/operations/sessions/{session.pk}/edit/',data).status_code,302)
+        session.refresh_from_db();self.assertEqual(session.SessionStatus,'postponed')
+        self.assertEqual(self.client.post(f'/operations/enrollments/{self.enrollment.pk}/edit/',{
+            'Trainee':self.trainee.pk,'Course':self.course.pk,'EnrollmentDate':date.today().isoformat(),
+            'EnrollmentStatus':'withdrawn'}).status_code,302)
+        self.enrollment.refresh_from_db();self.assertEqual(self.enrollment.EnrollmentStatus,'withdrawn')
+
+    def test_logout_requires_post_and_clears_signin(self):
+        response=self.client.post('/logout/')
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(self.client.get('/courses/').status_code,302)
+
+    def test_empty_form_submissions_keep_validation_on_screen(self):
+        self.as_admin()
+        for path in ['/courses/new/','/trainees/new/','/staff/new/','/website-users/new/',
+                     '/portal-access/new/'] + [f'/operations/{k}/new/' for k in
+                     ['enrollments','sessions','attendance','payments','certificates']]:
+            with self.subTest(path=path):
+                response=self.client.post(path,{'invalid':'value'})
+                self.assertContains(response,'This field is required.')
+
+    def test_record_status_filters_and_search(self):
+        self.as_admin()
+        for path,model,field in [('/trainees/',Trainee,'TraineeStatus'),
+                                 ('/courses/',Course,'CourseStatus'),
+                                 ('/staff/',Staff,'StaffStatus'),
+                                 ('/accounts/',UserAccount,'AccountStatus')]:
+            with self.subTest(path=path):
+                response=self.client.get(path,{'status':'inactive'})
+                self.assertEqual(response.context['page'].paginator.count,0)
+                self.assertEqual(response.context['status'],'inactive')
+                response=self.client.get(path,{'status':'active'})
+                self.assertGreater(response.context['page'].paginator.count,0)
+                self.assertEqual(response.context['status'],'active')
+                response=self.client.get(path,{'status':'not-a-status'})
+                self.assertEqual(response.context['status'],'')
+
+    def test_operation_status_filters_and_enrollment_payment_filter(self):
+        self.session()
+        for kind,status in [('enrollments','active'),('sessions','completed'),
+                            ('attendance','absent'),('payments','pending'),('certificates','revoked')]:
+            response=self.client.get('/operations/'+kind+'/',{'status':status})
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.context['status'],status)
+            self.assertContains(response,'Apply filters')
+        response=self.client.get('/operations/enrollments/',{'q':'Safety','status':'active','payment_status':'pending'})
+        self.assertEqual(response.context['page'].paginator.count,1)
+        response=self.client.get('/operations/enrollments/',{'status':'active','payment_status':'paid'})
+        self.assertEqual(response.context['page'].paginator.count,0)
+
+    def test_pagination_preserves_search_and_status_filters(self):
+        Course.objects.bulk_create([Course(CourseName=f'Filter course {i}',Category='Safety',
+            Duration='1 day',ModeOfDelivery='online',CourseFee=100,MaximumCapacity=10,
+            CourseStatus='inactive') for i in range(15)])
+        response=self.client.get('/courses/',{'q':'Filter','status':'inactive'})
+        self.assertContains(response,'q=Filter&amp;status=inactive&amp;page=2')
+        response=self.client.get('/courses/',{'q':'Filter','status':'inactive','page':2})
+        self.assertEqual(len(response.context['page']),3)
+        self.assertContains(response,'q=Filter&amp;status=inactive&amp;page=1')
+
+    def test_website_user_search_and_status_filters(self):
+        self.as_admin()
+        disabled=User.objects.create_user('filtered_operator',email='filtered@example.com',is_staff=True,is_active=False)
+        response=self.client.get('/website-users/',{'q':'filtered','status':'disabled'})
+        self.assertContains(response,disabled.username)
+        self.assertNotContains(response,'>'+self.webuser.username+'</td>')
+        response=self.client.get('/website-users/',{'q':'filtered','status':'active'})
+        self.assertNotContains(response,disabled.username+'</td>')
+
+    def test_dashboard_prioritizes_eight_cards_and_retains_all_groups(self):
+        response=self.client.get('/')
+        self.assertEqual(len(response.context['key_stats']),8)
+        self.assertEqual(len(response.context['stat_groups']),6)
+        self.assertContains(response,'<details class="metric-group">',count=6)
+        self.assertContains(response,'Recent enrollments')
     def test_capacity_rejects_another_trainee(self):
         u=UserAccount.objects.create(Username='two',Role='trainee',AccountStatus='active')
         t=Trainee.objects.create(User=u,FullName='Two',DateOfBirth=date(2000,1,1),Gender='male',NIN='TEST2',PhoneNo='0700000001',Email='two@example.com',RegistrationDate=date.today())

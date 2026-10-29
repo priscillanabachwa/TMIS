@@ -627,11 +627,11 @@ BEGIN
     END IF;
 
     INSERT INTO Attendance (SessionID, TraineeID, RecordedBy, AttendanceStatus, CheckInTime)
-    VALUES (p_session_id, p_trainee_id, p_recorded_by, p_status, p_check_in) AS nr
+    VALUES (p_session_id, p_trainee_id, p_recorded_by, p_status, p_check_in)
     ON DUPLICATE KEY UPDATE
-        RecordedBy       = nr.RecordedBy,
-        AttendanceStatus = nr.AttendanceStatus,
-        CheckInTime      = nr.CheckInTime,
+        RecordedBy       = VALUES(RecordedBy),
+        AttendanceStatus = VALUES(AttendanceStatus),
+        CheckInTime      = VALUES(CheckInTime),
         RecordedAt       = NOW();
 END$$
 

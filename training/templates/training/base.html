@@ -1,1 +1,37 @@
-{% load static %}<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title|default:'Dashboard' }} · NFSI Training</title><link rel="stylesheet" href="{% static 'training/style.css' %}"></head><body><aside><a class="brand" href="/">NFSI<span>TRAINING MANAGEMENT</span></a><div class="navlabel">WORKSPACE</div><nav>{% if request.portal_role %}<a href="/portal/" {% if section == 'portal' %}class="selected"{% endif %}>{% if request.portal_role == 'trainee' %}My training{% else %}My sessions{% endif %}</a><a href="/portal/notifications/" {% if section == 'notifications' %}class="selected"{% endif %}>My notifications</a>{% else %}<a href="/" {% if section == 'dashboard' %}class="selected"{% endif %}>Overview</a><a href="/trainees/" {% if section == 'trainees' %}class="selected"{% endif %}>Trainees</a><a href="/courses/" {% if section == 'courses' %}class="selected"{% endif %}>Courses</a><a href="/operations/enrollments/" {% if section == 'enrollments' %}class="selected"{% endif %}>Enrollments</a><a href="/operations/sessions/" {% if section == 'sessions' %}class="selected"{% endif %}>Training sessions</a><a href="/operations/attendance/" {% if section == 'attendance' %}class="selected"{% endif %}>Attendance</a><a href="/operations/payments/" {% if section == 'payments' %}class="selected"{% endif %}>Payments</a><a href="/operations/certificates/" {% if section == 'certificates' %}class="selected"{% endif %}>Certificates</a><a href="/reports/" {% if section == 'reports' %}class="selected"{% endif %}>Reports</a>{% if user.is_superuser %}<div class="navlabel adminlabel">ADMINISTRATION</div><a href="/staff/" {% if section == 'staff' %}class="selected"{% endif %}>Staff</a><a href="/accounts/" {% if section == 'accounts' %}class="selected"{% endif %}>Project accounts</a><a href="/website-users/" {% if section == 'website_users' %}class="selected"{% endif %}>Website users</a>{% endif %}{% endif %}</nav><div class="asidefoot">National Food Safety Institute<br>Ntinda · Kampala</div></aside><main><header><span>Training operations / {{ title|default:'Overview' }}</span>{% if user.is_authenticated %}<div>{{ user.username }}<form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link">Sign out</button></form></div>{% endif %}</header><article>{% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</article><footer>TMIS · Training administration</footer></main></body></html>
+{% load static %}<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ title|default:'Dashboard' }} · NFSI Training</title><link rel="stylesheet" href="{% static 'training/style.css' %}?v=20261029-type8"></head>
+<body class="{% block body_class %}workspace{% endblock %}">
+{% block sidebar %}
+<aside>
+  <a class="brand" href="/">NFSI<span>TRAINING MANAGEMENT</span></a>
+  <nav aria-label="Main navigation">
+  {% if request.portal_role %}
+    <div class="navgroup"><p class="navlabel">My workspace</p>
+    <a href="/portal/" {% if section == 'portal' %}class="selected" aria-current="page"{% endif %}>{% if request.portal_role == 'trainee' %}My training{% else %}My sessions{% endif %}</a>
+    <a href="/portal/notifications/" {% if section == 'notifications' %}class="selected" aria-current="page"{% endif %}>My notifications</a></div>
+  {% else %}
+    <div class="navgroup"><a href="/" {% if section == 'dashboard' %}class="selected" aria-current="page"{% endif %}>Overview</a></div>
+    <div class="navgroup"><p class="navlabel">Manage training</p>
+    <a href="/trainees/" {% if section == 'trainees' %}class="selected" aria-current="page"{% endif %}>Trainees</a>
+    <a href="/courses/" {% if section == 'courses' %}class="selected" aria-current="page"{% endif %}>Courses</a>
+    <a href="/operations/enrollments/" {% if section == 'enrollments' %}class="selected" aria-current="page"{% endif %}>Enrollments</a>
+    <a href="/operations/sessions/" {% if section == 'sessions' %}class="selected" aria-current="page"{% endif %}>Training sessions</a>
+    <a href="/operations/attendance/" {% if section == 'attendance' %}class="selected" aria-current="page"{% endif %}>Attendance</a></div>
+    <div class="navgroup"><p class="navlabel">Payments &amp; reports</p>
+    <a href="/operations/payments/" {% if section == 'payments' %}class="selected" aria-current="page"{% endif %}>Payments</a>
+    <a href="/operations/certificates/" {% if section == 'certificates' %}class="selected" aria-current="page"{% endif %}>Certificates</a>
+    <a href="/reports/" {% if section == 'reports' %}class="selected" aria-current="page"{% endif %}>Reports</a></div>
+    {% if user.is_superuser %}<div class="navgroup"><p class="navlabel">Staff &amp; user access</p>
+    <a href="/staff/" {% if section == 'staff' %}class="selected" aria-current="page"{% endif %}>Staff</a>
+    <a href="/accounts/" {% if section == 'accounts' %}class="selected" aria-current="page"{% endif %}>Project accounts</a>
+    <a href="/website-users/" {% if section == 'website_users' %}class="selected" aria-current="page"{% endif %}>Website users</a></div>{% endif %}
+  {% endif %}
+  </nav>
+  <div class="asidefoot">National Food Safety Institute<br>Ntinda · Kampala</div>
+</aside>
+{% endblock %}
+<main>
+  <header><span>Workspace <span class="breadcrumb-divider">/</span> {{ title|default:'Overview' }}</span>{% if user.is_authenticated %}<div><span class="user-name">{{ user.username }}</span><form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link">Sign out</button></form></div>{% endif %}</header>
+  <article>{% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}{% block content %}{% endblock %}</article>
+  <footer>TMIS · Training administration</footer>
+</main></body></html>

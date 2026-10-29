@@ -5,9 +5,9 @@ USE tmis_db;
 INSERT INTO UserAccount
     (Username, PasswordHash, Role, AccountStatus)
 VALUES
-    ('demo_trainee', 'DEMO_HASH_NOT_FOR_LOGIN', 'trainee', 'active'),
-    ('demo_trainer', 'DEMO_HASH_NOT_FOR_LOGIN', 'trainer', 'active'),
-    ('demo_admin', 'DEMO_HASH_NOT_FOR_LOGIN', 'administrator', 'active');
+    ('namusokeagnes', 'DEMO_HASH_NOT_FOR_LOGIN', 'trainee', 'active'),
+    ('ssekandijames', 'DEMO_HASH_NOT_FOR_LOGIN', 'trainer', 'active'),
+    ('nalugemasarah', 'DEMO_HASH_NOT_FOR_LOGIN', 'administrator', 'active');
 
 
 -- Trainee profile linked to the trainee account.
@@ -17,14 +17,14 @@ INSERT INTO Trainee (
     RegistrationDate, TraineeStatus
 )
 VALUES (
-    (SELECT UserID FROM UserAccount WHERE Username = 'demo_trainee'),
-    'Demo Trainee',
+    (SELECT UserID FROM UserAccount WHERE Username = 'namusokeagnes'),
+    'Namusoke Agnes',
     '2002-05-14',
     'female',
     'DEMO-NIN-001',
     '0700000001',
-    'trainee@example.com',
-    'Demo Food Company',
+    'agnes.namusoke@example.com',
+    'Central Food Processors',
     'Kampala',
     CURRENT_DATE,
     'active'
@@ -38,20 +38,20 @@ INSERT INTO Staff (
 )
 VALUES
 (
-    (SELECT UserID FROM UserAccount WHERE Username = 'demo_trainer'),
-    'Demo Trainer',
+    (SELECT UserID FROM UserAccount WHERE Username = 'ssekandijames'),
+    'Ssekandi James',
     'trainer',
-    'trainer@example.com',
+    'james.ssekandi@example.com',
     '0700000002',
     'Training',
     'active',
     CURRENT_DATE
 ),
 (
-    (SELECT UserID FROM UserAccount WHERE Username = 'demo_admin'),
-    'Demo Administrator',
+    (SELECT UserID FROM UserAccount WHERE Username = 'nalugemasarah'),
+    'Nalugema Sarah',
     'administrator',
-    'admin@example.com',
+    'sarah.nalugemasarah@example.com',
     '0700000003',
     'Administration',
     'active',

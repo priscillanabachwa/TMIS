@@ -6,14 +6,20 @@ from django.db.models import Q
 from django.shortcuts import render,redirect,get_object_or_404
 from .models import Trainee,Course
 from .forms import TraineeForm,CourseForm
+from .filters import filter_status
 @login_required
 def dashboard(request):
+    from .dashboard_stats import dashboard_groups
+    groups = dashboard_groups()
+    priority = ['Total trainees', 'Total courses', 'Active enrollments', 'Pending enrollments',
+                'Confirmed revenue · UGX', 'Outstanding balance · UGX',
+                'Upcoming sessions', 'Issued certificates']
+    cards = {card['label']: card for group in groups for card in group['cards']}
+    key_stats = [cards[label] for label in priority if label in cards]
     with connection.cursor() as cursor:
-        cursor.execute("SELECT (SELECT COUNT(*) FROM Trainee WHERE TraineeStatus='active'),(SELECT COUNT(*) FROM Course WHERE CourseStatus='active'),(SELECT COUNT(*) FROM Enrollment WHERE EnrollmentStatus='active'),(SELECT COALESCE(SUM(AmountPaid),0) FROM Payment WHERE PaymentStatus='confirmed')")
-        counts=cursor.fetchone()
         cursor.execute('SELECT t.FullName,c.CourseName,e.EnrollmentStatus,e.PaymentStatus FROM Enrollment e JOIN Trainee t ON t.TraineeID=e.TraineeID JOIN Course c ON c.CourseID=e.CourseID ORDER BY e.EnrollmentID DESC LIMIT 6')
         recent=cursor.fetchall()
-    return render(request,'training/dashboard.html',{'counts':counts,'recent':recent,'section':'dashboard'})
+    return render(request,'training/dashboard.html',{'key_stats':key_stats,'stat_groups':groups,'recent':recent,'section':'dashboard'})
 @login_required
 def records(request,kind):
     model,form,title = config(kind)
@@ -21,7 +27,8 @@ def records(request,kind):
     rows=model.objects.all().order_by('-'+model._meta.pk.name)
     if q:
         rows=rows.filter(Q(FullName__icontains=q)|Q(Email__icontains=q)) if kind=='trainees' else rows.filter(Q(CourseName__icontains=q)|Q(Category__icontains=q))
-    return render(request,'training/records.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'section':kind,'title':title,'q':q})
+    rows,filters=filter_status(request,rows,'TraineeStatus' if kind=='trainees' else 'CourseStatus')
+    return render(request,'training/records.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'section':kind,'title':title,'q':q,'clear_url':reverse('records',kwargs={'kind':kind}),**filters})
 def config(kind):
     from django.http import Http404
     if kind=='trainees': return Trainee,TraineeForm,'Trainees'
@@ -62,6 +69,8 @@ def module_config(kind):
     return MODULES[kind]
 
 def record_key(row):
+    if row.__class__.__name__ == 'Attendance':
+        return f'{row.Session_id}-{row.Trainee_id}'
     return '-'.join(str(v) for v in row.pk) if isinstance(row.pk,tuple) else str(row.pk)
 
 def resolve_key(model,key):
@@ -86,14 +95,25 @@ def module_records(request,kind):
     q=request.GET.get('q','').strip()
     records=cfg['model'].objects.select_related(*cfg['related']).order_by('-pk')
     if q: records=records.filter(reduce(or_,[Q(**{field+'__icontains':q}) for field in cfg['search']]))
+    status_field=next(field.name for field in cfg['model']._meta.fields if field.name.endswith('Status'))
+    records,filters=filter_status(request,records,status_field)
+    payment_status=request.GET.get('payment_status','')
+    if kind=='enrollments' and payment_status in ['pending','partially paid','paid']:
+        records=records.filter(PaymentStatus=payment_status)
+    else:
+        payment_status=''
     page=Paginator(records,12).get_page(request.GET.get('page'))
     rows=[{'values':[display_value(row,path) for path,label in cfg['columns']],'key':record_key(row)} for row in page]
-    return render(request,'training/module_records.html',{'section':kind,'title':cfg['title'],'headers':[label for path,label in cfg['columns']],'rows':rows,'page':page,'q':q})
+    return render(request,'training/module_records.html',{'section':kind,'title':cfg['title'],'singular':cfg['singular'],'headers':[label for path,label in cfg['columns']],'rows':rows,'page':page,'q':q,'payment_status':payment_status,'clear_url':reverse('module_records',kwargs={'kind':kind}),**filters})
 
 @login_required
 def module_edit(request,kind,key=None):
     cfg=module_config(kind)
-    instance=get_object_or_404(cfg['model'],pk=resolve_key(cfg['model'],key)) if key else None
+    if key and cfg['model'].__name__=='Attendance':
+        session_id,trainee_id=resolve_key(cfg['model'],key)
+        instance=get_object_or_404(cfg['model'],Session_id=session_id,Trainee_id=trainee_id)
+    else:
+        instance=get_object_or_404(cfg['model'],pk=resolve_key(cfg['model'],key)) if key else None
     form=cfg['form'](request.POST or None,instance=instance)
     if request.method=='POST' and form.is_valid():
         try: cfg['save'](form.save(commit=False))

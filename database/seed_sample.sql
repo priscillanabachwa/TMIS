@@ -60,11 +60,11 @@ INSERT INTO trainee (TraineeID, UserID, FullName, DateOfBirth, Gender, NIN, Phon
 (108, 108, 'Kato Moses',        '1991-07-21', 'male',   'SAMPLE-NIN-108', '0702567390', 'mkato91@gmail.com',      'Lakeside Bakers',          'Gulu',     '2026-09-10', 'active'),
 (109, 109, 'Nabirye Joan',      '1997-02-11', 'female', 'SAMPLE-NIN-109', '0794120685', 'joannabirye@gmail.com',    'Savannah Beverages',       'Mbarara',  '2026-09-12', 'inactive'),
 (110, 110, 'Opio Henry',        '1989-08-27', 'male',   'SAMPLE-NIN-110', '0777653028', 'henryopio89@gmail.com',      'Entebbe Fish Processors',  'Entebbe',  '2026-10-05', 'active'),
-(111, 111, 'Nansubuga Grace',   '1998-05-16', 'female', 'SAMPLE-NIN-111', '0771000111', 'grace.nansubuga@example.test', 'Kampala Fresh Foods', 'Kampala', '2026-10-20', 'active'),
-(112, 112, 'Mugabi Joseph',     '1992-09-08', 'male',   'SAMPLE-NIN-112', '0771000112', 'joseph.mugabi@example.test',   'Lakeview Processors', 'Entebbe', '2026-10-20', 'active'),
-(113, 113, 'Nakimuli Rita',     '1995-02-22', 'female', 'SAMPLE-NIN-113', '0771000113', 'rita.nakimuli@example.test',   'Green Valley Foods', 'Jinja',   '2026-10-21', 'active'),
-(114, 114, 'Okurut Brian',      '1989-12-03', 'male',   'SAMPLE-NIN-114', '0771000114', 'brian.okurut@example.test',    'Northern Harvest',   'Gulu',    '2026-10-21', 'active'),
-(115, 115, 'Namanya Susan',     '1997-07-11', 'female', 'SAMPLE-NIN-115', '0771000115', 'susan.namanya@example.test',   'Highland Dairy',     'Mbarara', '2026-10-22', 'active')
+(111, 111, 'Nansubuga Grace',   '1998-05-16', 'female', 'SAMPLE-NIN-111', '0771000111', 'grace.nansubuga@example.com', 'Kampala Fresh Foods', 'Kampala', '2026-10-20', 'active'),
+(112, 112, 'Mugabi Joseph',     '1992-09-08', 'male',   'SAMPLE-NIN-112', '0771000112', 'joseph.mugabi@example.com',   'Lakeview Processors', 'Entebbe', '2026-10-20', 'active'),
+(113, 113, 'Nakimuli Rita',     '1995-02-22', 'female', 'SAMPLE-NIN-113', '0771000113', 'rita.nakimuli@example.com',   'Green Valley Foods', 'Jinja',   '2026-10-21', 'active'),
+(114, 114, 'Okurut Brian',      '1989-12-03', 'male',   'SAMPLE-NIN-114', '0771000114', 'brian.okurut@example.com',    'Northern Harvest',   'Gulu',    '2026-10-21', 'active'),
+(115, 115, 'Namanya Susan',     '1997-07-11', 'female', 'SAMPLE-NIN-115', '0771000115', 'susan.namanya@example.com',   'Highland Dairy',     'Mbarara', '2026-10-22', 'active')
 ON DUPLICATE KEY UPDATE Email = VALUES(Email), PhoneNo = VALUES(PhoneNo);
 
 -- 4. Courses (101-106) ----------------------------------------------------

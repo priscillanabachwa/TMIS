@@ -1,5 +1,37 @@
 # TMIS website first version
 
+## Reports and verification
+
+Reports provide **Export CSV**, **Download PDF**, and **Print** actions. Downloads
+include all matching rows, including rows beyond the current page, and preserve
+the search filter. Print opens the browser print dialog with all matching rows;
+choose **Save as PDF** there or use **Download PDF** for a direct download.
+Install updated runtime dependencies with `python -m pip install -r requirements.txt`.
+
+For development checks, install `requirements-dev.txt`, set `TMIS_TEST_SQLITE=1`,
+then run `python manage.py test`. These workflow checks use a disposable database
+and do not alter the live MySQL records. PDF tests check pagination, full-row
+exports, filtering, and readable amounts.
+
+This installation uses Django 4.2 for compatibility with MariaDB 10.4.
+`training/apps.py` includes the upstream BaseContext copy fix for Python 3.14
+([Django issue 35844](https://code.djangoproject.com/ticket/35844)); it is applied
+only to Django 4.2 on Python 3.14+. It does not change installed package files.
+Remove this compatibility backport when upgrading Django and the database together.
+
+### Catalogue and presentation refresh
+
+After loading the existing seed scripts (including `seed_sample.sql`), run
+`database/refresh_catalogue.sql` in MySQL Workbench against `tmis_db`.
+It replaces known Demo profiles with fictional named profiles, adds 6 courses,
+and fills missing status examples across the sample records. It can be repeated
+without duplicating the added courses or payments. Existing confirmed revenue
+is preserved. Names in these scripts are sample identities, not verified users.
+Website login credentials remain managed through Website users.
+
+Course fees, payment amounts and financial reports display thousands separators.
+Course status is visible in the catalogue; lifecycle statuses use labelled badges.
+
 A Django website for your existing NFSI MySQL database. Includes staff login,
 a dashboard with live enrollment/payment totals, trainee and course search,
 pagination, and create/edit forms. Uses your exact table and column names.
@@ -15,8 +47,8 @@ folder and open it in VS Code. In the PowerShell terminal:
 py -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 $env:TMIS_DB_NAME="tmis_db"
-$env:TMIS_DB_USER="your_mysql_username"
-$env:TMIS_DB_PASSWORD="your_mysql_password"
+$env:TMIS_DB_USER="root"
+$env:TMIS_DB_PASSWORD="MySql123"
 $env:TMIS_DB_HOST="127.0.0.1"
 $env:TMIS_DB_PORT="3306"
 .\.venv\Scripts\python.exe manage.py check
@@ -28,7 +60,9 @@ $env:TMIS_DB_PORT="3306"
 Open http://127.0.0.1:8000/ and sign in using the superuser you just created.
 Set connection variables again when you open a new terminal. They are read from
 the environment, not a .env file. No real database password is included here.
-MySQL 8 or newer is recommended for the supplied schema constraints.
+MySQL 8 or newer is recommended for the supplied schema constraints. If you
+use MariaDB 10.4, this project uses Django 4.2 because newer Django versions
+require MariaDB 10.5 or later.
 
 `migrate` ADDS Django authentication/session tables to your existing database;
 it does not replace the ten project tables. The DB account needs privileges

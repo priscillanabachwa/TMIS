@@ -46,13 +46,13 @@ VALUES
 SET @trainee_id = (
     SELECT TraineeID
     FROM Trainee
-    WHERE Email = 'trainee@example.com'
+    WHERE Email = 'agnes.namusoke@example.com'
 );
 
 SET @trainer_id = (
     SELECT StaffID
     FROM Staff
-    WHERE Email = 'trainer@example.com'
+    WHERE Email = 'james.ssekandi@example.com'
 );
 
 -- Capture the IDs of the three courses just inserted.
