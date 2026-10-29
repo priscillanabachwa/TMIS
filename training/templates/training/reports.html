@@ -1,1 +1,41 @@
-{% extends 'training/base.html' %}{% load training_display %}{% block content %}<div class="eyebrow">MANAGEMENT REPORTS</div><div class="heading"><div><h1>{{ title }}</h1><p>{{ total }} matching records · generated from your live MySQL data</p></div><div class="reportactions"><a class="button" href="?report={{ selected }}&q={{ q|urlencode }}&export=csv">Export CSV</a><a class="button" href="?report={{ selected }}&q={{ q|urlencode }}&print=1">Print / PDF</a></div></div><section class="panel"><form class="search" method="get"><label for="report">Report</label><select id="report" name="report">{% for key,name in reports %}<option value="{{ key }}" {% if key == selected %}selected{% endif %}>{{ name }}</option>{% endfor %}</select><input name="q" value="{{ q }}" aria-label="Search report" placeholder="Filter records"><button>Apply</button></form>{% if printable %}<div class="printhelp"><p>This view includes all matching rows. Use your browser’s Print command and choose Save as PDF. Choose landscape for wide reports.</p><button onclick="window.print()">Print now</button></div>{% endif %}<div class="tablewrap"><table><thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead><tbody>{% for row in rows %}<tr>{% for value in row %}<td>{{ value|default_if_none:'—'|display_cell }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="12">No matching records.</td></tr>{% endfor %}</tbody></table></div>{% if not printable %}<div class="pagination">{% if page.has_previous %}<a href="?report={{ selected }}&q={{ q|urlencode }}&page={{ page.previous_page_number }}">← Previous</a>{% endif %}<span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?report={{ selected }}&q={{ q|urlencode }}&page={{ page.next_page_number }}">Next →</a>{% endif %}</div>{% endif %}</section><p class="reportnote">Eligibility uses 75% present attendance at completed sessions, no remaining scheduled/postponed sessions, full confirmed payment and a completed enrollment. Cancelled sessions are excluded. Cancelled/withdrawn enrollments are excluded from balances. Confirm these policies with your group.</p>{% endblock %}
+{% extends 'training/base.html' %}
+{% load training_display %}
+{% block content %}
+<div class="eyebrow">MANAGEMENT REPORTS</div>
+<div class="heading">
+  <div><h1>{{ title }}</h1><p>{{ total }} matching records · generated from your live database</p></div>
+  <div class="reportactions">
+    <a class="button" href="?report={{ selected }}&amp;q={{ q|urlencode }}&amp;export=csv">Export CSV</a>
+    <a class="button" href="?report={{ selected }}&amp;q={{ q|urlencode }}&amp;export=pdf">Download PDF</a>
+    <a class="button" href="?report={{ selected }}&amp;q={{ q|urlencode }}&amp;print=1">Print</a>
+  </div>
+</div>
+<section class="panel">
+  <form class="search" method="get">
+    <label for="report">Report</label>
+    <select id="report" name="report">{% for key,name in reports %}<option value="{{ key }}" {% if key == selected %}selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+    <input name="q" value="{{ q }}" aria-label="Search report" placeholder="Filter records">
+    <button type="submit">Apply</button>
+  </form>
+  {% if printable %}
+  <div class="printhelp">
+    <p>All matching rows are included. Choose Save as PDF in the print dialog to save a copy.</p>
+    <button type="button" onclick="window.print()">Print now</button>
+    <a href="?report={{ selected }}&amp;q={{ q|urlencode }}">Back to report</a>
+  </div>
+  {% endif %}
+  <div class="tablewrap"><table>
+    <thead><tr>{% for header in headers %}<th>{{ header }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in rows %}<tr>{% for value in row %}<td>{{ value|default_if_none:'—'|display_cell }}</td>{% endfor %}</tr>{% empty %}<tr><td colspan="12">No matching records.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if not printable %}
+  <div class="pagination">
+    {% if page.has_previous %}<a href="?report={{ selected }}&amp;q={{ q|urlencode }}&amp;page={{ page.previous_page_number }}">← Previous</a>{% endif %}
+    <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+    {% if page.has_next %}<a href="?report={{ selected }}&amp;q={{ q|urlencode }}&amp;page={{ page.next_page_number }}">Next →</a>{% endif %}
+  </div>
+  {% endif %}
+</section>
+<p class="reportnote">Certificate eligibility requires 75% present attendance at completed sessions, no remaining scheduled or postponed sessions, full confirmed payment and a completed enrollment. Cancelled sessions are excluded. Cancelled and withdrawn enrollments are excluded from balances.</p>
+{% if printable %}<script>window.addEventListener('load', function () { window.print(); });</script>{% endif %}
+{% endblock %}

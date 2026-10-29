@@ -76,6 +76,14 @@ class SessionForm(forms.ModelForm):
         if self.instance.pk: self.fields['Course'].disabled = True
 
 class AttendanceForm(forms.ModelForm):
+    def validate_unique(self):
+        # The existing SQL table has a composite (SessionID, TraineeID) key.
+        # Django 4.2 models Session as the PK, but it is not unique on its own.
+        if self.instance._state.adding:
+            session=self.cleaned_data.get('Session')
+            trainee=self.cleaned_data.get('Trainee')
+            if session and trainee and Attendance.objects.filter(Session=session,Trainee=trainee).exists():
+                self.add_error(None,'Attendance has already been recorded for this trainee and session.')
     class Meta:
         model = Attendance
         fields = ['Session','Trainee','RecordedBy','AttendanceStatus','CheckInTime']

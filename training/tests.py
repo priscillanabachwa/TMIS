@@ -37,7 +37,11 @@ class WebsiteTests(SimpleTestCase):
         cursor.fetchall.return_value=[('<script>bad</script>','Food Safety','active','paid')]
         req=RequestFactory().get('/')
         req.user=User(username='staff',is_staff=True)
-        response=dashboard(req)
+        with patch('training.dashboard_stats.dashboard_groups', return_value=[
+            {'title':'Payments','cards':[{'label':'Revenue','value':Decimal('190000'),
+             'money':True,'note':'Confirmed payments','url':'/operations/payments/'}]}
+        ]):
+            response=dashboard(req)
         self.assertEqual(response.status_code,200)
         self.assertIn(b'190,000',response.content)
         self.assertNotIn(b'<script>bad</script>',response.content)

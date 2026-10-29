@@ -5,6 +5,12 @@ from django.db import connection
 from django.http import HttpResponse
 from django.shortcuts import render
 REPORTS = {
+'notifications':('Notification delivery', """
+SELECT u.Username AS Recipient,n.NotificationType AS Channel,
+n.MessageContent AS Message,n.DateSent AS SentAt,n.DeliveryStatus AS Status
+FROM Notification n JOIN UserAccount u ON u.UserID=n.UserID
+ORDER BY n.DateSent DESC
+"""),
 'courses':('Course performance',"""
 SELECT c.CourseName AS Course, c.MaximumCapacity AS Capacity,
 COALESCE(e.Enrolled,0) AS Enrolled, COALESCE(p.Revenue,0) AS RevenueUGX,
@@ -64,6 +70,9 @@ def report(request):
         rows=cur.fetchall()
     q=request.GET.get('q','').strip()
     if q: rows=[row for row in rows if q.lower() in ' '.join(str(v or '') for v in row).lower()]
+    if request.GET.get('export')=='pdf':
+        from .pdf import report_pdf
+        return report_pdf(title, headers, rows, f'tmis_{selected}', q)
     if request.GET.get('export')=='csv':
         response=HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition']=f'attachment; filename="tmis_{selected}.csv"'

@@ -1,0 +1,6 @@
+<form class="search record-filters" method="get" aria-label="Filter records">
+  <div class="filter-search"><label for="q">Search</label><input id="q" name="q" value="{{ q }}" placeholder="Search names or keywords"></div>
+  <div class="filter-status"><label for="status">Status</label><select id="status" name="status"><option value="">All statuses</option>{% for value,label in status_options %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+  {% if section == 'enrollments' %}<div class="filter-status"><label for="payment_status">Payment</label><select id="payment_status" name="payment_status"><option value="">All payments</option><option value="pending" {% if payment_status == 'pending' %}selected{% endif %}>Pending</option><option value="partially paid" {% if payment_status == 'partially paid' %}selected{% endif %}>Partially paid</option><option value="paid" {% if payment_status == 'paid' %}selected{% endif %}>Paid</option></select></div>{% endif %}
+  <button type="submit">Apply filters</button><a class="button button-secondary" href="{{ clear_url }}">Clear</a>
+</form>

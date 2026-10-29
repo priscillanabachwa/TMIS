@@ -5,6 +5,15 @@ from django.utils.html import format_html
 
 register = template.Library()
 
+
+@register.simple_tag(takes_context=True)
+def page_url(context, number):
+    request = context.get('request')
+    from django.http import QueryDict
+    query = request.GET.copy() if request is not None else QueryDict(mutable=True)
+    query['page'] = number
+    return '?' + query.urlencode()
+
 STATUSES = {
     'active': 'success', 'confirmed': 'success', 'paid': 'success',
     'completed': 'success', 'present': 'success', 'issued': 'success',

@@ -1,5 +1,24 @@
 # TMIS website first version
 
+## Reports and verification
+
+Reports provide **Export CSV**, **Download PDF**, and **Print** actions. Downloads
+include all matching rows, including rows beyond the current page, and preserve
+the search filter. Print opens the browser print dialog with all matching rows;
+choose **Save as PDF** there or use **Download PDF** for a direct download.
+Install updated runtime dependencies with `python -m pip install -r requirements.txt`.
+
+For development checks, install `requirements-dev.txt`, set `TMIS_TEST_SQLITE=1`,
+then run `python manage.py test`. These workflow checks use a disposable database
+and do not alter the live MySQL records. PDF tests check pagination, full-row
+exports, filtering, and readable amounts.
+
+This installation uses Django 4.2 for compatibility with MariaDB 10.4.
+`training/apps.py` includes the upstream BaseContext copy fix for Python 3.14
+([Django issue 35844](https://code.djangoproject.com/ticket/35844)); it is applied
+only to Django 4.2 on Python 3.14+. It does not change installed package files.
+Remove this compatibility backport when upgrading Django and the database together.
+
 ### Catalogue and presentation refresh
 
 After loading the existing seed scripts (including `seed_sample.sql`), run

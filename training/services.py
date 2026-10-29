@@ -91,8 +91,8 @@ def save_attendance(obj,trainer_id=None):
         require(not Attendance.objects.filter(Session_id=obj.Session_id,Trainee_id=obj.Trainee_id).exists(),'Attendance has already been recorded for this trainee and session.')
         with connection.cursor() as cursor:
             cursor.execute(
-                'INSERT INTO Attendance (SessionID,TraineeID,RecordedBy,AttendanceStatus,CheckInTime) VALUES (%s,%s,%s,%s,%s)',
-                [obj.Session_id,obj.Trainee_id,obj.RecordedBy_id,obj.AttendanceStatus,obj.CheckInTime],
+                'INSERT INTO Attendance (SessionID,TraineeID,RecordedBy,AttendanceStatus,CheckInTime,RecordedAt) VALUES (%s,%s,%s,%s,%s,%s)',
+                [obj.Session_id,obj.Trainee_id,obj.RecordedBy_id,obj.AttendanceStatus,obj.CheckInTime,timezone.now()],
             )
         obj._state.adding = False
     else:

@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404,render,redirect
 from django.urls import reverse
 from .models import UserAccount,Trainee,Staff,TrainingSession
 from .forms import StaffForm,AccountStatusForm,WebsiteUserForm,WebsiteUserEditForm
+from .filters import filter_status
 
 def administrator(view):
     @wraps(view)
@@ -54,7 +55,8 @@ def staff_records(request):
     q=request.GET.get('q','').strip()
     rows=Staff.objects.select_related('User').order_by('FullName')
     if q: rows=rows.filter(Q(FullName__icontains=q)|Q(Email__icontains=q)|Q(Department__icontains=q))
-    return render(request,'training/staff.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'q':q,'section':'staff','title':'Staff'})
+    rows,filters=filter_status(request,rows,'StaffStatus')
+    return render(request,'training/staff.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'q':q,'section':'staff','title':'Staff','clear_url':reverse('staff_records'),**filters})
 
 @administrator
 def staff_edit(request,pk=None):
@@ -74,7 +76,8 @@ def accounts(request):
     q=request.GET.get('q','').strip()
     rows=UserAccount.objects.order_by('Username')
     if q: rows=rows.filter(Q(Username__icontains=q)|Q(Role__icontains=q))
-    return render(request,'training/accounts.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'q':q,'section':'accounts','title':'Project accounts'})
+    rows,filters=filter_status(request,rows,'AccountStatus')
+    return render(request,'training/accounts.html',{'page':Paginator(rows,12).get_page(request.GET.get('page')),'q':q,'section':'accounts','title':'Project accounts','clear_url':reverse('accounts'),**filters})
 
 @administrator
 def account_status(request,pk):
@@ -91,7 +94,16 @@ def account_status(request,pk):
 
 @administrator
 def website_users(request):
-    return render(request,'training/website_users.html',{'users':website_user_accounts().select_related('portal_identity__Account').order_by('username'),'section':'website_users','title':'Website users'})
+    rows=website_user_accounts().select_related('portal_identity__Account').order_by('username')
+    q=request.GET.get('q','').strip()
+    if q:
+        rows=rows.filter(Q(username__icontains=q)|Q(first_name__icontains=q)|Q(last_name__icontains=q)|Q(email__icontains=q))
+    status=request.GET.get('status','')
+    if status in ['active','disabled']:
+        rows=rows.filter(is_active=status=='active')
+    else:
+        status=''
+    return render(request,'training/website_users.html',{'users':rows,'section':'website_users','title':'Website users','q':q,'status':status,'status_options':[('active','Active'),('disabled','Disabled')],'clear_url':reverse('website_users')})
 
 def website_user_accounts():
     return WebsiteUser.objects.filter(Q(is_superuser=True)|Q(is_staff=True)|Q(portal_identity__isnull=False))
